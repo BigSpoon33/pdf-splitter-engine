@@ -3,6 +3,8 @@ import json
 import fitz
 import pytest
 
+from monograph_splitter.profile import load_profile
+
 from monograph_splitter.cuts import apply_overrides, cut_rects, plan
 from monograph_splitter.index import add_known_starts, index_book, page_anchors, page_lines
 from monograph_splitter.render import render_review, write_excerpt
@@ -113,8 +115,8 @@ def test_known_starts_seed_a_synthetic_anchor_only_where_nothing_was_found(scena
 
 
 def scenario_prof():
-    from tests.conftest import TOOLS
-    from monograph_splitter.profile import load_profile
+    from pathlib import Path
+    return load_profile(Path(__file__).parent / "profile-test.toml")
     return load_profile(TOOLS / "tests" / "profile-test.toml")
 
 
