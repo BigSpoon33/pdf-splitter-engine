@@ -48,4 +48,5 @@ if __name__ == "__main__":
 
 def main_entry() -> None:
     """Console-script entry (`monograph-splitter-diff`)."""
-    raise SystemExit(main())
+    import sys
+    raise SystemExit(main(sys.argv[1:]))
