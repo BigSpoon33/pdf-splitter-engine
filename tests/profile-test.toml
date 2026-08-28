@@ -1,0 +1,6 @@
+# The synthetic test book: Chen & Chen typography, but printed page N is sheet N-1.
+name = "test-book"
+description = "synthetic two-column book built by tests/fixtures.py"
+
+[book]
+sheet_offset = 0

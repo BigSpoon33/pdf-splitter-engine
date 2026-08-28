@@ -1,0 +1,53 @@
+# Layout profile: Chen & Chen, Chinese Herbal Formulas and Applications
+# (scanned, OCR text layer). Every value here was discovered by failing on
+# this book — see docs/tooling/monograph-splitter.md "How it decides".
+# Regexes use TOML literal strings ('…') so backslashes are verbatim.
+name = "chen-chen-formulas"
+description = "Chen & Chen, Chinese Herbal Formulas and Applications (scanned, OCR text layer)"
+
+[book]
+sheet_offset = 39            # printed page N is sheet N+38 (0-based) — calibrated in extract_ccf_index.py
+
+[layout]
+header_band = 50.0           # running (sub)headers start above this
+redact_top = 45.0            # redaction keeps the running chapter/section header above this
+subheader_bottom = 72.0      # a running sub-header (previous entry's name) ends about here
+footer_band = 32.0           # the printed page number lives below H - 32
+column_split = 0.487         # right column starts at x≈260 of W=522.7; left dose figures reach 249
+full_width_ratio = 0.55      # a line wider than 0.55·W spans both columns (entry titles)
+title_min_y = 30.0           # an entry that STARTS a page has its title at y≈33–43
+
+[title]
+big_min_size = 12.5          # Latin titles OCR at 13.6–24pt; sub-entry titles at 6–10pt
+script_min_size = 12.0       # Chinese title lines: 14–18pt for entries, 8.5pt for sub-entries
+script_regex = '[一-鿿]'
+script_ratio = 0.6           # a line is a Chinese line when ≥60% of its glyphs are CJK (strays don't count)
+body_max_size = 11.0         # body text 8–10pt; Section-banner captions OCR at 11.7–11.9
+big_lines_min = 3            # three big lines above the labels = a title the OCR shattered
+title_reach = 150.0
+gap_window = 160.0
+min_gap = 18.0
+
+[labels]
+name = 'p\s*[i1l|]\s*n\s*y\s*[i1l|]\s*n\s+n\s*a\s*[mr]\s*[nr]?\s*e\s*[:：]?\s*(.*)'
+secondary = ['l\s*[i1l|]\s*t\s*e\s*r\s*a\s*l\s+n\s*a\s*[mr]\s*[nr]?\s*e', 'or\s*[i1l|]\s*g\s*[i1l|]\s*n\s*a\s*l\s+s\s*o\s*u\s*r\s*c\s*e']
+cluster_gap = 70.0
+related_heading = 'related\s+formula'
+related_reach = 130.0
+block_reach = 62.0
+estimate_above = 55.0
+parent_headings = 'authors.?\s*comments|^\s*references\s*$|case\s+stud|clinical\s+stud'
+parent_size = [8.0, 12.5]
+parent_max_len = 32
+
+[breaks]
+patterns = ['umma[rn]', 'table\s+of\s+contents', '^\s*overv[i1l]ew\s*$', '^\s*b[i1l]ograph']
+chapter_only = '^\s*chapter\s*\d+\s*[-—一]?\s*$'
+min_size = 14.0              # the Summary heading is 19pt at y≈45; running headers are 8–9pt
+max_len = 28
+
+[limits]
+max_span = 20
+long_span = 10
+name_match = 0.75
+walk_back = 8

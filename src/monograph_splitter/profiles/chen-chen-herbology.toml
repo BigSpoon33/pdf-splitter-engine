@@ -1,0 +1,35 @@
+# Layout profile: Chen & Chen, Chinese Medical Herbology and Pharmacology
+# (scanned, OCR text layer; 1,332 sheets, W=543.4). Second book (STORY-204):
+# only what differs from the formulas book is set — everything else inherits
+# the built-in defaults, which ARE profiles/chen-chen-formulas.toml.
+name = "chen-chen-herbology"
+description = "Chen & Chen, Chinese Medical Herbology and Pharmacology (scanned, OCR text layer)"
+
+[book]
+sheet_offset = 65            # printed page N is sheet N+64 — calibrated on Ba Ji Tian (891→955) and Huang Qi (847→911)
+
+[layout]
+column_split = 0.47          # right column starts at x≈261 of W=543.4; left-column lines end ≈251
+
+[title]
+# ONE Chinese title line (19–24pt) per monograph instead of the formulas book's two
+# 17pt lines — so the OCR gets one chance, and it garbles it more often ("白才i，" for
+# 白术: 2 of 4 glyphs CJK). Accept a half-CJK line, and let title + one big line
+# count as a title block (a continuation page has exactly one big line — the
+# running sub-header — so two is still safe).
+script_ratio = 0.5
+big_lines_min = 2
+
+[labels]
+# Herbology header blocks: Pinyin Name / (Literal Name for some) / Alternate Chinese
+# Names / Original Source / English Name / Botanical Name / Pharmaceutical Name.
+secondary = ['l\s*[i1l|]\s*t\s*e\s*r\s*a\s*l\s+n\s*a\s*[mr]\s*[nr]?\s*e', 'or\s*[i1l|]\s*g\s*[i1l|]\s*n\s*a\s*l\s+s\s*o\s*u\s*r\s*c\s*e', 'p\s*h\s*a\s*r\s*m\s*a\s*c\s*e\s*u\s*t\s*[i1l|]\s*c\s*a\s*l\s+n\s*a\s*[mr]\s*[nr]?\s*e', 'b\s*o\s*t\s*a\s*n\s*[i1l|]\s*c\s*a\s*l\s+n\s*a\s*[mr]\s*[nr]?\s*e']
+related_heading = 'related\s+(herb|formula)'
+# A Herbology header block is ~8 label lines (Pinyin, Alternate Chinese, Original
+# Source, English, Botanical, Pharmaceutical Name, Properties, Channels) spanning
+# ≈100pt — the formulas book's 70pt split each block in two and every excerpt
+# ended at its own second half (mean 1.1 pages, 291 bottom cuts on the first run).
+# …and on Bai Zhu the Original Source wraps, so the block reaches 120pt
+# (Pinyin 122 → Pharmaceutical Name 242): 110 still split it and the excerpt ended
+# inside its own header (the engine's `ends-inside-own-header` flag came from this).
+cluster_gap = 160.0
