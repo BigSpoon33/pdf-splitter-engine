@@ -21,7 +21,10 @@ header_band = 46.0           # the running part number ("6", 20.5pt) spans y 26�
 redact_top = 52.0            # redaction starts below the part number's glyph box; a body line starting at 47.6 still intersects
 subheader_bottom = 52.0      # no running sub-header in this book — the strip above a column-bound start has zero height
 footer_band = 36.0           # the folio (8pt) sits at y 664–674 of 697.3
-column_split = 0.45          # left column x0 40–104, right column x0 ≥ 269 (W 535.7) — no line is wider than 0.55·W
+column_split = 0.502         # the GUTTER, measured over Part 6 + the diagnosis chapters: two page templates —
+                             # left column ends at x1 ≤ 257 / 268.6, right column starts at x0 ≥ 269.2 / 280.6
+                             # (W 535.7); 0.502·W = 268.9 sits in both gutters. 0.45 (the first cut) fell INSIDE
+                             # the left column and every right-column rectangle clipped the left lines' tails.
 full_width_ratio = 0.55
 
 [title]
