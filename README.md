@@ -135,3 +135,29 @@ loader's errors, the entries adapters and the CLI end to end.
 ## License
 
 MIT.
+
+## Headings mode (books without label blocks)
+
+Chen & Chen introduce every monograph with a label block (`Pinyin Name:` …), and the
+engine finds those on its own. Maciocia's *Foundations* introduces a pattern with a bare
+12.5pt heading and nothing else, so there is nothing for the label rules to anchor on.
+A profile with `[anchors] source = "headings"` switches the anchor source: the entries
+list carries each entry's `heading` text, and the engine locates it on the given start
+sheet (`index.locate_heading` — a window of 1–3 consecutive big lines in one column, so a
+wrapped heading with an interleaved margin title still matches; lines below
+`heading_min_size` match only exactly). The located lines become the same anchor dict
+the label path makes (`index.heading_anchor`: column, start cut `heading_pad` above the
+heading clamped into the gap below the previous line, lines/body above counted in
+reading order — left column before right), so `cuts.plan`, `cut_rects` and `render` do
+not change. A row with `"stop": true` (a chapter tail, a group banner) plants an anchor
+so the entry before it ends there but gets no excerpt. A heading that is not on its
+sheet becomes a whole-page start flagged `heading-not-found`; a row with no `heading`
+is a deliberate whole-page start. `--verify` uses `verify.verify_headings`: another
+entry's heading still readable inside the excerpt is a `leak`.
+
+    monograph-splitter --pdf foundations.pdf --profile maciocia-foundations \
+        --entries entries.json --out pattern-sources --preview --verify
+
+Bundled profile: `maciocia-foundations` (sheet offset 29, two columns split at 0.45,
+header band 46 / redaction from 52 so the running part number survives, footer band 36).
+

@@ -6,6 +6,10 @@ set of "known" printed start pages (a TOC, an index) used to seed a synthetic
 top-of-page anchor where the OCR found no header at all.
 
 `--entries <json>` is the generic input: `[{"name": "Gui Zhi Tang", "page": 51}]`.
+In headings mode (profile `[anchors] source = "headings"`) a row also carries the
+`"heading"` text the engine locates on that page, and a row with `"stop": true`
+is a boundary only (a chapter tail, a section banner): it plants an anchor so
+the entry before it ends there, but gets no excerpt of its own.
 `entries_from_vault()` is the Inkwell adapter: one note per entry, the page in
 its `source_page:` frontmatter. It is the only code that knows what a vault is.
 """
@@ -14,7 +18,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -23,6 +27,7 @@ class Entry:
     name: str
     page: int
     source: str = "entries"   # "entries" | "frontmatter" — becomes manifest.pageSource
+    heading: str = ""         # headings mode: the text to locate on the start sheet ("" = top of the page)
 
 
 @dataclass
@@ -30,6 +35,8 @@ class EntryList:
     entries: list[Entry]
     skipped: list[str]          # names with no usable page — reported, never silent
     known_pages: set[int]       # every start page anyone told us about (for synthetic anchors)
+    # headings mode: every anchor to plant — (name, heading, page) for entries AND stop rows
+    headings: list[tuple[str, str, int]] = field(default_factory=list)
 
 
 def _page_ok(v) -> bool:
@@ -42,6 +49,7 @@ def load_entries_json(path: Path) -> EntryList:
         raise ValueError(f"{path}: expected a JSON list of {{name, page}} objects")
     entries: list[Entry] = []
     skipped: list[str] = []
+    headings: list[tuple[str, str, int]] = []
     for i, item in enumerate(raw):
         name = item.get("name") if isinstance(item, dict) else None
         page = item.get("page") if isinstance(item, dict) else None
@@ -51,8 +59,15 @@ def load_entries_json(path: Path) -> EntryList:
         if not _page_ok(page):
             skipped.append(f"{name} (no printed start page)")
             continue
-        entries.append(Entry(name.strip(), page, str(item.get("source") or "entries")))
-    return EntryList(entries, skipped, {e.page for e in entries})
+        name = name.strip()
+        heading = item.get("heading")
+        heading = heading.strip() if isinstance(heading, str) else ""
+        if item.get("stop"):
+            headings.append((name, heading or name, page))
+            continue
+        entries.append(Entry(name, page, str(item.get("source") or "entries"), heading))
+        headings.append((name, heading, page))
+    return EntryList(entries, skipped, {e.page for e in entries}, headings)
 
 
 def frontmatter_page(text: str) -> int | None:

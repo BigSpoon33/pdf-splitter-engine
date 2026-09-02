@@ -125,8 +125,13 @@ def resolve_uncertain(pages: list[dict], prof: Profile) -> int:
 def index_page(page, prof: Profile) -> dict:
     w = page.rect.width
     lines = page_lines(page)
-    anchors = page_anchors(lines, w, prof)
-    sub = [ln[4] for ln in lines if ln[0] < prof.header_band and ln[5] >= prof.big_min_size]
+    if prof.anchor_source == "headings":
+        # No label blocks to find and no running sub-header to walk back from: the
+        # anchors come from the entries' headings, planted later by add_heading_anchors.
+        anchors, sub = [], []
+    else:
+        anchors = page_anchors(lines, w, prof)
+        sub = [ln[4] for ln in lines if ln[0] < prof.header_band and ln[5] >= prof.big_min_size]
     return {"anchors": anchors, "chapterBreak": chapter_break(lines, prof), "lines": len(lines),
             "subheader": sub[0][:80] if sub else "",
             "W": round(w, 1), "H": round(page.rect.height, 1)}
@@ -171,3 +176,122 @@ def add_known_starts(index: list[dict], sheets: set[int], prof: Profile) -> int:
                                         "synthetic": True, "ord": 0, "bandTop": None, "bandBottom": None})
             added += 1
     return added
+
+
+# ── headings mode ────────────────────────────────────────────────────────────
+# A book with no header label blocks (Maciocia): every entry is introduced by a bare
+# heading. The entries list says which heading sits on which sheet; the engine finds
+# the heading's lines and turns them into the same anchor dict the label path makes,
+# so plan()/cut_rects()/render need not know the difference.
+
+def locate_heading(lines: list[Line], heading: str, w: float, prof: Profile, min_size: float | None = None,
+                   match: float | None = None) -> dict | None:
+    """The heading on this sheet: the best window of 1–3 consecutive big lines (≥
+    heading_min_size, one column, line tops within heading_wrap_gap — smaller lines in
+    between are skipped, so an interleaved margin title cannot break a wrapped heading)
+    whose joined text matches; a line below the size floor matches only exactly.
+    Ties go to the bigger type, then the higher line — a pattern's name repeated as a
+    smaller cross-reference item ("Pathological developments → Lung Dryness") loses to
+    its real heading. With `min_size` and `match` (the leak check: the anchor's own type
+    size and 1.0) only lines that big count, the joined text must be the located text
+    itself, and the exact-match fallback is off: a repetition in smaller type is not a
+    leak, and "Collapse of Yin" is not "Collapse of Yang" (difflib says 0.96)."""
+    key = norm(heading)
+    if not key:
+        return None
+    best: tuple[float, float, float, list[Line]] | None = None
+
+    def consider(window: list[Line], ratio: float) -> None:
+        nonlocal best
+        cand = (ratio, max(ln[5] for ln in window), -window[0][0], window)
+        if best is None or cand[:3] > best[:3]:
+            best = cand
+
+    floor = prof.heading_min_size if min_size is None else min_size
+    threshold = prof.heading_match if match is None else match
+    # a heading that STARTS a page has its top inside the header band (like a Chen & Chen title)
+    big = [ln for ln in lines if ln[5] >= floor and ln[0] >= prof.title_min_y]
+    columns = [[ln for ln in big if is_left(ln[2], w, prof)], [ln for ln in big if not is_left(ln[2], w, prof)]]
+    for col in columns:
+        for i, first in enumerate(col):
+            window = [first]
+            for j in range(i, min(i + 3, len(col))):
+                if j > i:
+                    if col[j][0] - window[-1][0] > prof.heading_wrap_gap:
+                        break
+                    window.append(col[j])
+                r = difflib.SequenceMatcher(None, norm(" ".join(ln[4] for ln in window)), key).ratio()
+                if r >= threshold:
+                    consider(list(window), r)
+    if best is None and min_size is None:
+        for ln in lines:
+            if ln[0] >= prof.title_min_y and norm(ln[4]) == key:
+                consider([ln], 1.0)
+    if best is None:
+        return None
+    window = best[3]
+    return {"y": window[0][0], "y1": max(ln[1] for ln in window), "x0": min(ln[2] for ln in window),
+            "x1": max(ln[3] for ln in window), "size": best[1], "ratio": best[0],
+            "text": " ".join(ln[4] for ln in window)}
+
+
+def heading_anchor(lines: list[Line], loc: dict, name: str, w: float, h: float, prof: Profile) -> dict:
+    """An anchor for a located heading, in the shape page_anchors() makes. The start cut
+    is heading_pad above the heading's top, clamped into the gap below the previous line
+    of the same column (a section banner may sit 1–6pt above a heading — a fixed pad would
+    eat it, and MuPDF removes every glyph a redaction rectangle touches). linesAbove /
+    bodyAbove count in READING order — a right-column heading has the whole left column
+    before it — so plan() sees a mid-page start where there is one."""
+    y, x0 = loc["y"], loc["x0"]
+    full = loc["x1"] - x0 > prof.full_width_ratio * w
+    col = "full" if full else ("left" if is_left(x0, w, prof) else "right")
+    content = [ln for ln in lines if prof.header_band <= ln[0] < h - prof.footer_band]
+    ours = [ln for ln in content if ln[0] < y and (col == "full" or same_column(ln, x0, w, prof))]
+    prev_bottom = max([prof.header_band] + [ln[1] for ln in ours if ln[1] <= y])
+    cut = y - prof.heading_pad
+    if cut < prev_bottom:
+        cut = (prev_bottom + y) / 2
+    cut = min(max(prof.header_band, cut), y)      # a page-top heading: the cut is its own top, never below it
+    if col == "right":
+        above = [ln for ln in content if is_left(ln[2], w, prof) or (same_column(ln, x0, w, prof) and ln[0] < cut)]
+    else:
+        above = [ln for ln in content if ln[0] < cut and (col == "full" or same_column(ln, x0, w, prof))]
+    return {"y": round(y, 1), "x0": round(x0, 1), "name": name, "kind": "monograph", "col": col,
+            "titleTop": round(cut, 1), "linesAbove": len(above),
+            "bodyAbove": sum(1 for ln in above if ln[5] < prof.body_max_size),
+            "method": "heading", "titleSize": round(loc["size"], 1), "titleText": loc["text"][:80],
+            "bigTexts": [], "bigTop": round(y, 1), "uncertain": False}
+
+
+def add_heading_anchors(index: list[dict], book, refs: list[tuple[str, str, int]], prof: Profile) -> tuple[int, list[str]]:
+    """Plant one anchor per (name, heading, printed page). A heading that is not on its
+    sheet — or an entry given without one — gets a named synthetic top-of-page anchor
+    (a whole-page start); only the former is reported, as `method: heading-missing`.
+    Returns (located, names not found)."""
+    by_sheet: dict[int, list[tuple[str, str]]] = {}
+    for name, heading, page in refs:
+        by_sheet.setdefault(page + prof.sheet_offset - 1, []).append((name, heading))
+    located, missing = 0, []
+    for s, items in sorted(by_sheet.items()):
+        if not (0 <= s < len(index)):
+            missing.extend(n for n, _ in items)
+            continue
+        page = book[s]
+        lines = page_lines(page)
+        w, h = page.rect.width, page.rect.height
+        for name, heading in items:
+            loc = locate_heading(lines, heading, w, prof) if heading else None
+            if loc:
+                index[s]["anchors"].append(heading_anchor(lines, loc, name, w, h, prof))
+                located += 1
+            else:
+                if heading:
+                    missing.append(name)
+                index[s]["anchors"].append({
+                    "y": prof.header_band, "x0": 0.0, "name": name, "kind": "monograph", "col": "full",
+                    "titleTop": prof.header_band, "linesAbove": 0, "bodyAbove": 0,
+                    "method": "heading-missing" if heading else "page", "titleSize": 0.0,
+                    "titleText": heading[:80], "bigTexts": [], "bigTop": 0.0, "uncertain": False,
+                    "synthetic": bool(heading)})
+        finalize_anchors(index[s]["anchors"])
+    return located, missing

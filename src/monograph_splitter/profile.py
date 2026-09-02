@@ -40,7 +40,12 @@ SCHEMA: dict[str, dict[str, str]] = {
     },
     "breaks": {"patterns": "break_patterns", "chapter_only": "chapter_only", "min_size": "break_min_size", "max_len": "break_max_len"},
     "limits": {"max_span": "max_span", "long_span": "long_span", "name_match": "name_match", "walk_back": "walk_back"},
+    "anchors": {
+        "source": "anchor_source", "heading_min_size": "heading_min_size", "heading_wrap_gap": "heading_wrap_gap",
+        "heading_pad": "heading_pad", "heading_match": "heading_match",
+    },
 }
+ANCHOR_SOURCES = ("labels", "headings")
 TOP_LEVEL = {"name", "description"}
 
 
@@ -94,6 +99,15 @@ class Profile:
     long_span: int = 10              # flag anything longer for a human look
     name_match: float = 0.75         # difflib ratio for "this header is our entry"
     walk_back: int = 8               # sheets to search backwards for a continuation page's real start
+    # [anchors] — where an entry's anchor comes from. "labels": the header label block the
+    # OCR left behind (Chen & Chen — the engine finds every entry on its own). "headings": the
+    # book introduces an entry with a bare heading and nothing else (Maciocia), so the entries
+    # list carries each heading's text and the engine locates it on the given start sheet.
+    anchor_source: str = "labels"
+    heading_min_size: float = 12.5   # heading lines are at least this big; smaller lines match only exactly
+    heading_wrap_gap: float = 16.0   # a heading wrapped over lines: consecutive line tops within this
+    heading_pad: float = 3.0         # the start cut sits this far above the heading's top (clamped to the line above)
+    heading_match: float = 0.85      # difflib ratio for "these lines are the heading"
 
     # compiled patterns (cached_property writes to __dict__, which a frozen dataclass allows)
     @cached_property
@@ -182,6 +196,8 @@ def load_profile(path: str | Path | None) -> Profile:
         raise ProfileError(f"{p}: [labels].name must have one capture group for the entry name")
     if not (0.0 < prof.column_split < 1.0):
         raise ProfileError(f"{p}: [layout].column_split must be a fraction of the page width")
+    if prof.anchor_source not in ANCHOR_SOURCES:
+        raise ProfileError(f"{p}: [anchors].source must be one of {', '.join(ANCHOR_SOURCES)} (got {prof.anchor_source!r})")
     return prof
 
 

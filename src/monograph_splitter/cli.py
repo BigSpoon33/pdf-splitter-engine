@@ -18,12 +18,12 @@ import sys
 import time
 from pathlib import Path
 
-from .cuts import apply_overrides, plan
+from .cuts import apply_overrides, plan, plan_headings
 from .entries import EntryList, entries_from_vault, load_entries_json, load_known_pages, select
-from .index import add_known_starts, index_book
+from .index import add_heading_anchors, add_known_starts, index_book
 from .profile import ProfileError, load_profile
 from .render import render_review, write_excerpt, write_index_html
-from .verify import truncation_check, verify_excerpt
+from .verify import truncation_check, verify_excerpt, verify_headings
 
 OVERRIDES_HELP = """
 overrides.json — one entry per name, every field optional:
@@ -77,8 +77,8 @@ def build_parser(defaults: dict | None = None) -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="monograph-splitter", description="one clean PDF per entry of a scanned reference book")
     ap.add_argument("--pdf", type=Path, default=d.get("pdf"), help="the book (OCR text layer required)")
     ap.add_argument("--out", type=Path, default=d.get("out"), help="output dir (PDFs, manifest.json, overrides.json, review/)")
-    ap.add_argument("--profile", type=str, default=d.get("profile"), help="layout profile: a TOML path, or the name of a bundled one (chen-chen-formulas, chen-chen-herbology; default: built-in Chen & Chen formulas)")
-    ap.add_argument("--entries", type=Path, default=d.get("entries"), help='JSON list of {"name", "page"}')
+    ap.add_argument("--profile", type=str, default=d.get("profile"), help="layout profile: a TOML path, or the name of a bundled one (chen-chen-formulas, chen-chen-herbology, maciocia-foundations; default: built-in Chen & Chen formulas)")
+    ap.add_argument("--entries", type=Path, default=d.get("entries"), help='JSON list of {"name", "page"} (+ "heading" and "stop": true rows in headings mode)')
     ap.add_argument("--from-vault", type=Path, default=d.get("from_vault"), help="Inkwell adapter: entries from <vault>/<folder>/*.md source_page frontmatter")
     ap.add_argument("--vault-folder", default=d.get("vault_folder", "TCM_Formulas"))
     ap.add_argument("--known-pages", type=Path, nargs="*", default=d.get("known_pages", []),
@@ -125,6 +125,11 @@ def main(argv: list[str] | None = None, *, defaults: dict | None = None, log=pri
     chosen, unknown = select(el.entries, only, args.limit)
     if unknown:
         log(f"--only: no entry for {unknown}")
+    headings_mode = prof.anchor_source == "headings"
+    if headings_mode:
+        located, not_found = add_heading_anchors(index, book, el.headings, prof)
+        log(f"  headings mode: {located} heading anchor(s) located on their sheets"
+            + (f", {len(not_found)} NOT found (whole-page start, flagged): {not_found}" if not_found else ""))
     known = set(el.known_pages)
     for kp in args.known_pages or []:
         known |= load_known_pages(kp)
@@ -147,7 +152,7 @@ def main(argv: list[str] | None = None, *, defaults: dict | None = None, log=pri
     missing: list[str] = list(el.skipped)
     t0 = time.time()
     for entry in chosen:
-        p = plan(entry.name, entry.page, index, prof)
+        p = (plan_headings if headings_mode else plan)(entry.name, entry.page, index, prof)
         p = apply_overrides(p, overrides.get(entry.name), prof)
         if not (0 <= p["sheet0"] <= p["sheet1"] < book.page_count):
             missing.append(f"{entry.name} (sheets {p['sheet0']}–{p['sheet1']} out of range)")
@@ -155,7 +160,11 @@ def main(argv: list[str] | None = None, *, defaults: dict | None = None, log=pri
         dest = args.out / f"{entry.name}.pdf"
         write_excerpt(book, p, dest, redact=not args.no_redact, prof=prof)
         slug = re.sub(r"[^A-Za-z0-9]+", "-", entry.name).strip("-")
-        leaks = verify_excerpt(dest, entry.name, p["kind"], prof) if args.verify and not args.no_redact else []
+        if args.verify and not args.no_redact:
+            leaks = (verify_headings(dest, entry.name, p, index, prof) if headings_mode
+                     else verify_excerpt(dest, entry.name, p["kind"], prof))
+        else:
+            leaks = []
         if leaks:
             p["flags"].append("leak")
         if args.verify:

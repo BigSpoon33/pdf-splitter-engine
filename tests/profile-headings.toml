@@ -1,0 +1,23 @@
+# The synthetic Maciocia-like book (tests/fixtures.py heading_book): no label blocks,
+# 12.5pt bold pattern headings, 9pt body; printed page N is sheet N-1.
+name = "test-headings"
+description = "synthetic two-column heading-anchored book built by tests/fixtures.py"
+
+[book]
+sheet_offset = 0
+
+[anchors]
+source = "headings"
+heading_min_size = 11.5
+heading_wrap_gap = 16.0
+heading_pad = 3.0
+heading_match = 0.85
+
+[layout]
+subheader_bottom = 45.0
+
+[title]
+script_regex = ""
+
+[breaks]
+patterns = []

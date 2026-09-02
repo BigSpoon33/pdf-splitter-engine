@@ -141,6 +141,15 @@ def plan(entry: str, start_page: int, index: list[dict], prof: Profile) -> dict:
             "nextFormula": next_name, "kind": kind, "flags": flags, "notes": notes}
 
 
+def plan_headings(entry: str, start_page: int, index: list[dict], prof: Profile) -> dict:
+    """Headings mode: plan() unchanged, plus a flag when our own heading was not found on
+    its sheet (the excerpt then starts at the top of the page — a human should look)."""
+    p = plan(entry, start_page, index, prof)
+    if any(a["name"] == entry and a.get("method") == "heading-missing" for a in index[p["sheet0"]]["anchors"]):
+        p["flags"].append("heading-not-found")
+    return p
+
+
 OVERRIDE_KEYS = ("startCut", "startCol", "endCut", "endCol")
 
 

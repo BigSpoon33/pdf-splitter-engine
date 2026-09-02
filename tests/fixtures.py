@@ -77,6 +77,25 @@ class FakeBook:
     def heading(self, y: float, text: str = "AUTHORS' COMMENTS", col: str = "right") -> float:
         return self.text(y, text, size=9.5, x=LEFT if col == "left" else RIGHT) + 4
 
+    # ── Maciocia-like typography (headings mode) ─────────────────────────────
+    def pattern(self, y: float, name: str, col: str = "left", wrap: str | None = None, margin: str | None = None) -> float:
+        """A pattern heading (12.5pt bold, column-bound), optionally wrapped over two lines
+        13.5pt apart with a small margin caption interleaved, then the 12pt 'Clinical
+        manifestations' sub-heading. y is the heading baseline; returns the next body baseline."""
+        x = LEFT if col == "left" else RIGHT
+        self.text(y, name, size=12.5, x=x, font="hebo")
+        if wrap:
+            if margin:
+                self.text(y + 6, margin, size=8, x=x + 190)
+            y += 13.5
+            self.text(y, wrap, size=12.5, x=x, font="hebo")
+        self.text(y + 20, "Clinical manifestations", size=12, x=x, font="hebo")
+        return y + 36
+
+    def banner(self, y: float, text: str = "FULL PATTERNS", col: str = "left") -> float:
+        self.text(y, text, size=13, x=LEFT if col == "left" else RIGHT, font="hebo")
+        return y + 16
+
     def save(self, path) -> str:
         self.doc.save(str(path))
         return str(path)
@@ -113,5 +132,45 @@ def scenario_book(path) -> dict:
             {"name": "Alpha Tang", "page": 1}, {"name": "Beta San", "page": 2}, {"name": "Gamma Wan", "page": 3},
             {"name": "Delta Yin", "page": 4}, {"name": "Epsilon Tang", "page": 6}, {"name": "Zeta Wan", "page": 7},
             {"name": "Eta San", "page": 8},
+        ],
+    }
+
+
+def heading_book(path) -> dict:
+    """The headings-mode scenario (printed page = sheet + 1 under tests/profile-headings.toml):
+      p1  Alpha Pattern at the top of the left column; body in both columns
+      p2  left: Alpha's tail, a FULL PATTERNS banner, Beta Pattern mid-column, and inside
+          Beta's body an 11.5pt italic cross-reference repeating Gamma's heading;
+          right: Beta's body, then Gamma Pattern wrapped over two lines with an 8pt margin
+          caption interleaved, then Gamma's body
+      p3  left column full of Gamma's tail; Delta Pattern at the top of the RIGHT column
+      p4  Epsilon Pattern at the top of the left column (the whole page is Epsilon's)
+      p5  Epsilon continues; a 9.5pt 'Self-assessment questions' box title = a stop
+      p6  chapter opener (66pt number, 24pt title) — no anchors at all
+      p7  Zeta Pattern at the top-left (the book ends there)
+    """
+    b = FakeBook()
+    b.page(1); y = b.pattern(60, "Alpha Pattern"); b.body(y, 20, prefix="alpha body"); b.body(80, 20, "right", prefix="alpha right")
+    b.page(2); y = b.body(80, 10, prefix="alpha tail"); y = b.banner(y + 30); y = b.pattern(y + 26, "Beta Pattern"); y = b.body(y, 8, prefix="beta body")
+    b.text(y + 4, "Gamma Pattern turning into Heat", size=11.5, font="heit")           # a cross-reference in Beta's body, smaller type
+    b.body(y + 20, 4, prefix="beta body more")
+    y = b.body(80, 8, "right", prefix="beta right"); y = b.pattern(y + 30, "Gamma Pattern", col="right", wrap="turning into Heat", margin="34")
+    b.body(y, 12, "right", prefix="gamma body")
+    b.page(3); b.body(80, 30, prefix="gamma tail"); y = b.pattern(70, "Delta Pattern", col="right"); b.body(y, 20, "right", prefix="delta body")
+    b.page(4); y = b.pattern(60, "Epsilon Pattern"); b.body(y, 20, prefix="epsilon body")
+    b.page(5); y = b.body(80, 10, prefix="epsilon tail"); b.text(y + 20, "Self-assessment questions", size=9.5, font="hebo"); b.body(y + 40, 8, prefix="questions")
+    b.page(6); b.text(200, "35", size=66, x=300); b.text(260, "Lung Patterns", size=24, x=200)
+    b.page(7); y = b.pattern(60, "Zeta Pattern"); b.body(y, 10, prefix="zeta body")
+    b.save(path)
+    return {
+        "pdf": str(path),
+        "entries": [
+            {"name": "Alpha Pattern", "page": 1, "heading": "Alpha Pattern"},
+            {"name": "Beta Pattern", "page": 2, "heading": "Beta Pattern"},
+            {"name": "Gamma Pattern", "page": 2, "heading": "Gamma Pattern turning into Heat"},
+            {"name": "Delta Pattern", "page": 3, "heading": "Delta Pattern"},
+            {"name": "Epsilon Pattern", "page": 4, "heading": "Epsilon Pattern"},
+            {"name": "Self-assessment questions", "page": 5, "heading": "Self-assessment questions", "stop": True},
+            {"name": "Zeta Pattern", "page": 7, "heading": "Zeta Pattern"},
         ],
     }
