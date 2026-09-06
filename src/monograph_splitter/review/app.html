@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Excerpt review</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #fff; --ink: #1f1f1f; --muted: #6b6b6b; --line: #ddd9d2;
+    --accent: #2e5aac; --warn: #b54708; --bad: #b42318; --ok: #2e7d32; --hl: #fff3cd;
+    --mono: #2e5aac; --related: #d97706; --heading: #7a7a7a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 13px/1.4 system-ui, sans-serif; color: var(--ink); background: var(--bg); display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; font-weight: 600; }
+  .tabs button { border: 1px solid var(--line); background: #fafafa; padding: 4px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+  .tabs button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  header input[type=search] { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; min-width: 220px; font: inherit; }
+  .chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .chips button { border: 1px solid var(--line); background: #fff; padding: 2px 8px; border-radius: 12px; cursor: pointer; font: inherit; font-size: 12px; }
+  .chips button.on { background: #e8eefb; border-color: var(--accent); color: var(--accent); }
+  .counts { color: var(--muted); font-size: 12px; margin-left: auto; }
+  main { flex: 1; display: grid; grid-template-columns: 330px 1fr; min-height: 0; }
+  aside { border-right: 1px solid var(--line); overflow-y: auto; background: var(--panel); }
+  .row { padding: 6px 10px; border-bottom: 1px solid #eee; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; }
+  .row:hover { background: #f4f6fb; }
+  .row.sel { background: #e8eefb; }
+  .row .nm { font-weight: 600; }
+  .row .pg { color: var(--muted); font-size: 12px; text-align: right; white-space: nowrap; }
+  .row .meta { grid-column: 1 / -1; display: flex; gap: 4px; flex-wrap: wrap; }
+  .badge { font-size: 10.5px; padding: 0 6px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); background: #fafafa; }
+  .badge.flag { color: var(--bad); border-color: #f0c2bd; background: #fff5f4; }
+  .badge.ov { color: var(--accent); border-color: #bcd0f5; background: #eef3fd; }
+  .badge.kind-related { color: var(--related); border-color: #f5d5a8; background: #fff8ec; }
+  .badge.missing { color: var(--warn); border-color: #f5d5a8; background: #fff8ec; }
+  section.editor { overflow: auto; padding: 12px 16px; }
+  .ehead { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .ehead h2 { margin: 0; font-size: 18px; }
+  .ehead .sub { color: var(--muted); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px 20px; }
+  .ctl.wide { grid-column: 1 / -1; }
+  .ctl h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .ctl .line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
+  .ctl input[type=number] { width: 76px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+  .ctl input[type=text] { flex: 1; min-width: 160px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+  .seg button { border: 1px solid var(--line); background: #fff; padding: 2px 8px; cursor: pointer; font: inherit; font-size: 12px; }
+  .seg button:first-child { border-radius: 4px 0 0 4px; } .seg button:last-child { border-radius: 0 4px 4px 0; }
+  .seg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn { border: 1px solid var(--line); background: #fff; padding: 5px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.danger { color: var(--bad); border-color: #f0c2bd; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .status { font-size: 12px; color: var(--muted); }
+  .status .flag { color: var(--bad); font-weight: 600; }
+  .status .ok { color: var(--ok); font-weight: 600; }
+  .dirty { color: var(--warn); font-weight: 600; }
+  .strip { display: flex; gap: 14px; align-items: flex-start; overflow-x: auto; padding-bottom: 12px; }
+  .sheet { flex: 0 0 auto; width: var(--sheetw, 560px); }
+  .sheet .cap { display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 4px; gap: 6px; }
+  .sheet .cap b { font-weight: 600; }
+  .sheet .frame { position: relative; border: 1px solid var(--line); background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .sheet.ctx .frame { opacity: .55; }
+  .sheet.ctx .frame:hover { opacity: .85; }
+  .sheet img { display: block; width: 100%; height: auto; }
+  .sheet svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .cutline { cursor: ns-resize; }
+  .anchor-lbl { cursor: pointer; }
+  .popup { position: absolute; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 4px; display: flex; gap: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.15); z-index: 5; }
+  pre.out { background: #1f1f1f; color: #eee; padding: 8px 10px; border-radius: 6px; font-size: 11.5px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+  .legend { font-size: 11.5px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 10px; height: 10px; vertical-align: -1px; margin-right: 4px; border-radius: 2px; }
+  .empty { color: var(--muted); padding: 40px; text-align: center; }
+  kbd { font: 11px ui-monospace, monospace; background: #eee; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Excerpt review</h1>
+  <div class="tabs" id="tabs"></div>
+  <input type="search" id="q" placeholder="find an entry…" autocomplete="off">
+  <div class="chips" id="chips"></div>
+  <div class="counts" id="counts"></div>
+</header>
+<main>
+  <aside id="list"></aside>
+  <section class="editor" id="editor"><div class="empty">Pick a book, then an entry.</div></section>
+</main>
+<script>
+(() => {
+  const $ = (sel, el = document) => el.querySelector(sel);
+  const h = (tag, attrs = {}, ...kids) => {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') el.className = v;
+      else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else if (v !== null && v !== undefined) el.setAttribute(k, v);
+    }
+    for (const kid of kids.flat()) if (kid !== null && kid !== undefined) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+    return el;
+  };
+  const svgEl = (tag, attrs = {}, ...kids) => {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else if (v !== null && v !== undefined) el.setAttribute(k, v);
+    }
+    for (const kid of kids.flat()) if (kid !== null && kid !== undefined) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+    return el;
+  };
+  const api = async (path, body) => {
+    const r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) { let msg = r.statusText; try { msg = (await r.json()).detail || msg; } catch {} throw new Error(msg); }
+    return r.json();
+  };
+  const fold = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const fmt = v => v === null || v === undefined ? '—' : (Math.round(v * 10) / 10).toString();
+
+  const FILTERS = [
+    ['all', 'All', r => true],
+    ['flagged', 'Flagged', r => r.flags && r.flags.length],
+    ['overridden', 'Overridden', r => r.hasOverride],
+    ['related', 'Related', r => r.kind === 'related'],
+    ['noexcerpt', 'No excerpt', r => !r.hasExcerpt],
+  ];
+
+  const state = {
+    books: [], bookId: null, book: null, filter: 'all', q: '', selected: null,
+    detail: null, edit: null, preview: null, dirty: false, busy: false, sheetW: 480, hookOut: null,
+  };
+  const OV_FIELDS = ['pages', 'startCut', 'startCol', 'endCut', 'endCol', 'startBand', 'endBand'];
+
+  // ── header ──────────────────────────────────────────────────────────────
+  function renderTabs() {
+    const t = $('#tabs'); t.replaceChildren();
+    for (const b of state.books) t.append(h('button', { class: b.id === state.bookId ? 'on' : '', onclick: () => loadBook(b.id) }, b.title));
+    const c = $('#chips'); c.replaceChildren();
+    for (const [id, label] of FILTERS) c.append(h('button', { class: id === state.filter ? 'on' : '', onclick: () => { state.filter = id; renderList(); } }, label));
+    if (state.book && state.book.skipped.length) c.append(h('button', { class: state.filter === 'unmapped' ? 'on' : '', onclick: () => { state.filter = 'unmapped'; renderList(); } }, `Unmapped (${state.book.skipped.length})`));
+  }
+
+  async function loadBooks() {
+    state.books = await api('/api/books');
+    renderTabs();
+    const first = location.hash.slice(1).split('/')[0];
+    await loadBook(state.books.find(b => b.id === first)?.id || state.books[0]?.id);
+  }
+
+  async function loadBook(id) {
+    if (!id) return;
+    state.bookId = id; state.book = null; state.selected = null; state.detail = null;
+    renderTabs(); $('#list').replaceChildren(h('div', { class: 'empty' }, 'Opening the book…'));
+    state.book = await api(`/api/books/${encodeURIComponent(id)}`);
+    renderTabs(); renderList();
+    const want = decodeURIComponent(location.hash.slice(1).split('/').slice(1).join('/'));
+    if (want && state.book.entries.some(e => e.name === want)) select(want); else renderEditor();
+  }
+
+  function renderList() {
+    const b = state.book; if (!b) return;
+    const q = fold(state.q.trim());
+    let rows = b.entries;
+    if (state.filter === 'unmapped') rows = b.skipped.map(s => ({ name: s.split(' (')[0], unmapped: true, flags: [], notes: [] }));
+    else rows = rows.filter(FILTERS.find(f => f[0] === state.filter)[2]);
+    if (q) rows = rows.filter(r => fold(r.name).includes(q));
+    const c = b.counts;
+    $('#counts').textContent = `${rows.length} shown · ${c.entries} entries · ${c.excerpts} excerpts · ${c.flagged} flagged · ${c.overridden} overridden · ${c.unmapped} unmapped · ${b.profile}`;
+    const list = $('#list'); list.replaceChildren();
+    for (const r of rows) {
+      const meta = [];
+      if (r.unmapped) meta.push(h('span', { class: 'badge missing' }, 'no page'));
+      if (r.kind === 'related') meta.push(h('span', { class: 'badge kind-related' }, 'related'));
+      if (r.hasOverride) meta.push(h('span', { class: 'badge ov' }, 'override'));
+      if (!r.unmapped && !r.hasExcerpt) meta.push(h('span', { class: 'badge missing' }, 'no excerpt'));
+      for (const f of r.flags || []) meta.push(h('span', { class: 'badge flag' }, f));
+      list.append(h('div', { class: 'row' + (r.name === state.selected ? ' sel' : ''), onclick: () => select(r.name), 'data-name': r.name },
+        h('div', { class: 'nm' }, r.name),
+        h('div', { class: 'pg' }, r.printedPages ? `${r.printedPages[0]}–${r.printedPages[1]} (${r.pageCount}p)` : (r.page ? `p. ${r.page}` : '')),
+        meta.length ? h('div', { class: 'meta' }, meta) : null));
+    }
+    if (!rows.length) list.append(h('div', { class: 'empty' }, 'Nothing matches.'));
+  }
+
+  // ── editor ──────────────────────────────────────────────────────────────
+  async function select(name) {
+    if (state.dirty && !confirm('Discard the unsaved edit?')) return;
+    state.selected = name; state.dirty = false; state.hookOut = null;
+    location.hash = `${state.bookId}/${encodeURIComponent(name)}`;
+    for (const el of document.querySelectorAll('.row')) el.classList.toggle('sel', el.dataset.name === name);
+    $('#editor').replaceChildren(h('div', { class: 'empty' }, 'Loading…'));
+    try {
+      state.detail = await api(`/api/books/${encodeURIComponent(state.bookId)}/entries/${encodeURIComponent(name)}`);
+    } catch (e) { $('#editor').replaceChildren(h('div', { class: 'empty' }, `Could not load: ${e.message}`)); return; }
+    state.edit = editFromPlan(state.detail.current);
+    state.preview = state.detail.current;
+    renderEditor();
+  }
+
+  function editFromPlan(p) {
+    if (!p) return { pages: null, startCut: null, startCol: 'full', endCut: null, endCol: 'full', startBand: null, endBand: null, note: '' };
+    return { pages: [...p.pages], startCut: p.startCut, startCol: p.startCol, endCut: p.endCut, endCol: p.endCol,
+      startBand: bandOrNull(p.startBand), endBand: bandOrNull(p.endBand), note: (state.detail?.override?.note) || '' };
+  }
+  const bandOrNull = b => (b && (b[0] !== null || b[1] !== null)) ? [b[0], b[1]] : null;
+  const asOverride = () => {
+    const e = state.edit, ov = {};
+    for (const k of OV_FIELDS) ov[k] = e[k];
+    const fields = [...OV_FIELDS];
+    if (e.note && e.note.trim()) { ov.note = e.note.trim(); fields.push('note'); }
+    ov.fields = fields;
+    return ov;
+  };
+
+  let previewTimer = null;
+  function changed(rerender = true) {
+    state.dirty = true;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(async () => {
+      try {
+        const r = await api(`/api/books/${encodeURIComponent(state.bookId)}/entries/${encodeURIComponent(state.selected)}/preview`, asOverride());
+        state.preview = r.plan;
+      } catch (err) { state.preview = { ...(state.preview || {}), error: err.message, rects: [] }; }
+      renderEditor();
+    }, 120);
+    if (rerender) renderEditor();
+  }
+
+  function renderEditor() {
+    const ed = $('#editor'); ed.replaceChildren();
+    const d = state.detail;
+    if (!d) { ed.append(h('div', { class: 'empty' }, state.book ? 'Pick an entry on the left.' : 'Pick a book.')); return; }
+    const e = state.edit, p = state.preview || {}, cur = d.current, auto = d.auto;
+    const unmapped = !cur;
+    const bid = encodeURIComponent(state.bookId), nm = encodeURIComponent(d.entry.name);
+
+    const head = h('div', { class: 'ehead' },
+      h('h2', {}, d.entry.name),
+      h('span', { class: 'sub' }, unmapped ? 'no printed page mapped' : `${d.entry.source} start p. ${d.entry.page} · auto: ${planText(auto)}`),
+      state.dirty ? h('span', { class: 'dirty' }, '● unsaved') : null);
+    ed.append(head);
+
+    // status of the last saved row + preview flags
+    const m = d.manifest;
+    const st = h('div', { class: 'status' });
+    if (m) st.append(h('div', {}, `Saved excerpt: pages ${m.printedPages[0]}–${m.printedPages[1]} (${m.pageCount}p, ${(m.bytes / 1024).toFixed(0)} KB, ${m.kind}${m.nextFormula ? ', next: ' + m.nextFormula : ''}) `,
+      ...flagSpans(m.flags, m.notes, m.leaks)));
+    else if (!unmapped) st.append(h('div', {}, 'No excerpt written yet.'));
+    if (p && p.pages) st.append(h('div', {}, 'Preview: ', planText(p), ' ', ...flagSpans(p.flags, p.notes, []), p.inRange === false ? h('span', { class: 'flag' }, ' outside the book!') : null));
+    if (p && p.error) st.append(h('div', { class: 'flag' }, p.error));
+
+    // controls
+    const pages = e.pages;
+    const ctl = h('div', { class: 'panel' },
+      h('div', { class: 'controls' },
+        h('div', { class: 'ctl wide' }, h('h3', {}, 'Pages'),
+          h('div', { class: 'line' },
+            h('button', { class: 'btn', onclick: () => extend('before'), disabled: unmapped && !pages }, '◀ add page before'),
+            h('button', { class: 'btn', onclick: () => shrink('first'), disabled: !pages || pages[0] >= pages[1] }, 'drop first'),
+            h('span', {}, ' printed '),
+            h('input', { type: 'number', value: pages ? pages[0] : '', placeholder: 'first', onchange: ev => setPage(0, +ev.target.value) }),
+            h('span', {}, '–'),
+            h('input', { type: 'number', value: pages ? pages[1] : '', placeholder: 'last', onchange: ev => setPage(1, +ev.target.value) }),
+            h('button', { class: 'btn', onclick: () => shrink('last'), disabled: !pages || pages[0] >= pages[1] }, 'drop last'),
+            h('button', { class: 'btn', onclick: () => extend('after'), disabled: unmapped && !pages }, 'add page after ▶')),
+          h('div', { class: 'line status' }, pages ? `sheets ${pages[0] + d.sheetOffset - 1}–${pages[1] + d.sheetOffset - 1} of ${d.bookPages}` : 'type a first page to map this entry')),
+        cutControls('start', 'Start (first page)', e.startCut, e.startCol, e.startBand, auto && auto.startBand),
+        cutControls('end', 'End (last page)', e.endCut, e.endCol, e.endBand, auto && auto.endBand),
+        h('div', { class: 'ctl' }, h('h3', {}, 'Note'),
+          h('div', { class: 'line' }, h('input', { type: 'text', value: e.note || '', placeholder: 'why (kept in overrides.json)', oninput: ev => { e.note = ev.target.value; state.dirty = true; head.querySelector('.dirty') || head.append(h('span', { class: 'dirty' }, '● unsaved')); } })))),
+      h('div', { class: 'actions', style: 'margin-top:10px' },
+        h('button', { class: 'btn primary', disabled: state.busy || !pages, onclick: save }, state.busy ? 'Working…' : 'Save & re-cut'),
+        h('button', { class: 'btn', disabled: state.busy || !d.override, onclick: reset }, 'Reset to auto'),
+        h('button', { class: 'btn', disabled: !state.dirty, onclick: () => { state.edit = editFromPlan(cur); state.preview = cur; state.dirty = false; renderEditor(); } }, 'Discard edit'),
+        d.hasExcerpt ? h('a', { class: 'btn', href: `/api/books/${bid}/excerpts/${nm}.pdf?t=${Date.now()}`, target: '_blank' }, 'Open excerpt PDF') : null,
+        ...(d.hooks || []).map(hk => h('button', { class: 'btn', disabled: state.busy || state.dirty || !d.hasExcerpt, title: state.dirty ? 'save first' : '', onclick: () => runHook(hk.id) }, hk.label)),
+        h('span', { style: 'margin-left:auto' }, 'zoom ', h('input', { type: 'range', min: 320, max: 1100, value: state.sheetW, oninput: ev => { state.sheetW = +ev.target.value; document.documentElement.style.setProperty('--sheetw', state.sheetW + 'px'); } })),
+      ),
+      st);
+    ed.append(ctl);
+    if (state.hookOut) ed.append(h('div', { class: 'panel' }, h('div', { class: 'status' }, `${state.hookOut.hook}: exit ${state.hookOut.returncode} in ${state.hookOut.seconds}s — `, h('code', {}, state.hookOut.cmd.join(' '))),
+      h('pre', { class: 'out' }, (state.hookOut.stdout || '') + (state.hookOut.stderr ? '\n[stderr]\n' + state.hookOut.stderr : ''))));
+
+    ed.append(h('div', { class: 'legend' },
+      h('span', {}, h('i', { style: 'background:rgba(220,38,38,.35)' }), 'removed by the cut'),
+      h('span', {}, h('i', { style: 'background:var(--mono)' }), 'entry header'),
+      h('span', {}, h('i', { style: 'background:var(--related)' }), 'related sub-entry'),
+      h('span', {}, h('i', { style: 'background:var(--heading)' }), 'parent heading / chapter'),
+      h('span', {}, 'drag the red line to move a cut · click a header label to snap a cut to it · dimmed sheets are context, “include” pulls them in')));
+    if (pages) ed.append(renderStrip());
+    document.documentElement.style.setProperty('--sheetw', state.sheetW + 'px');
+  }
+
+  const planText = p => p ? `pp. ${p.pages[0]}–${p.pages[1]} · start ${p.startCut === null ? 'whole page' : fmt(p.startCut) + ' ' + p.startCol} · end ${p.endCut === null ? 'whole page' : fmt(p.endCut) + ' ' + p.endCol}` : '';
+  const flagSpans = (flags, notes, leaks) => [
+    ...(flags || []).filter(f => f !== 'override').map(f => h('span', { class: 'flag' }, f + ' ')),
+    (flags || []).includes('override') ? h('span', { class: 'ok' }, 'override ') : null,
+    ...(notes || []).map(n => h('span', {}, n + ' ')),
+    ...(leaks || []).map(l => h('span', { class: 'flag' }, l + ' ')),
+  ];
+
+  function cutControls(which, title, cut, col, band, autoBand) {
+    const e = state.edit;
+    const setCut = v => { e[which + 'Cut'] = v; changed(); };
+    const setCol = v => { e[which + 'Col'] = v; changed(); };
+    const noCut = cut === null || cut === undefined;
+    return h('div', { class: 'ctl' }, h('h3', {}, title),
+      h('div', { class: 'line' },
+        h('label', {}, h('input', { type: 'checkbox', checked: noCut ? '' : null, onchange: ev => setCut(ev.target.checked ? null : (which === 'start' ? 100 : 700)) }), ' keep the whole page'),
+        !noCut ? h('span', {}, ' y ', h('input', { type: 'number', step: '0.5', value: fmt(cut), onchange: ev => setCut(+ev.target.value) })) : null),
+      !noCut ? h('div', { class: 'line' }, 'column ',
+        h('span', { class: 'seg' }, ...['full', 'left', 'right'].map(c => h('button', { class: c === col ? 'on' : '', onclick: () => setCol(c) }, c))),
+        col !== 'full' ? h('span', { style: 'margin-left:8px' }, 'band ',
+          h('span', { class: 'seg' },
+            h('button', { class: band ? 'on' : '', disabled: !autoBand || (autoBand[0] === null && autoBand[1] === null) ? '' : null, onclick: () => { e[which + 'Band'] = bandOrNull(autoBand); changed(); } }, autoBand && (autoBand[0] !== null || autoBand[1] !== null) ? `auto ${fmt(autoBand[0])}–${fmt(autoBand[1])}` : 'auto (none)'),
+            h('button', { class: band ? '' : 'on', onclick: () => { e[which + 'Band'] = null; changed(); } }, 'whole column'))) : null) : null);
+  }
+
+  function setPage(i, v) {
+    const e = state.edit;
+    if (!Number.isFinite(v) || v < 1) return;
+    if (!e.pages) e.pages = [v, v];
+    e.pages[i] = v;
+    if (e.pages[0] > e.pages[1]) e.pages[i === 0 ? 1 : 0] = v;
+    if (i === 0) { e.startCut = null; e.startBand = null; } else { e.endCut = null; e.endBand = null; }
+    changed();
+  }
+  function extend(where) {
+    const e = state.edit; if (!e.pages) return;
+    if (where === 'before') { e.pages[0] -= 1; e.startCut = null; e.startBand = null; }
+    else { e.pages[1] += 1; e.endCut = null; e.endBand = null; }
+    changed();
+  }
+  function shrink(which) {
+    const e = state.edit; if (!e.pages || e.pages[0] >= e.pages[1]) return;
+    if (which === 'first') { e.pages[0] += 1; e.startCut = null; e.startBand = null; }
+    else { e.pages[1] -= 1; e.endCut = null; e.endBand = null; }
+    changed();
+  }
+
+  // ── sheets ──────────────────────────────────────────────────────────────
+  function renderStrip() {
+    const d = state.detail, e = state.edit, p = state.preview || {};
+    const [W, H] = d.pageSize, off = d.sheetOffset;
+    const s0 = e.pages[0] + off - 1, s1 = e.pages[1] + off - 1;
+    const strip = h('div', { class: 'strip' });
+    for (let s = s0 - 1; s <= s1 + 1; s++) {
+      if (s < 0 || s >= d.bookPages) continue;
+      const ctx = s < s0 || s > s1;
+      const printed = s - off + 1;
+      const cap = h('div', { class: 'cap' }, h('span', {}, h('b', {}, `p. ${printed}`), ` · sheet ${s}`, ctx ? ' · context' : (s === s0 && s === s1 ? ' · only page' : s === s0 ? ' · first' : s === s1 ? ' · last' : '')),
+        ctx ? h('button', { class: 'btn', onclick: () => extend(s < s0 ? 'before' : 'after') }, s < s0 ? '◀ include' : 'include ▶') : null);
+      const img = h('img', { src: `/api/books/${encodeURIComponent(state.bookId)}/sheets/${s}.png`, loading: 'lazy', draggable: 'false' });
+      const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'none' });
+      const split = d.columnSplit * W;
+      svg.append(svgEl('line', { x1: split, y1: 0, x2: split, y2: H, stroke: '#999', 'stroke-dasharray': '3 4', 'stroke-width': .6 }));
+      if (!ctx) {
+        for (const r of p.rects || []) if (r.sheet === s - s0) {
+          const [x0, y0, x1, y1] = r.rect;
+          svg.append(svgEl('rect', { x: x0, y: y0, width: Math.max(0, x1 - x0), height: Math.max(0, y1 - y0), fill: 'rgba(220,38,38,.28)', stroke: '#dc2626', 'stroke-width': .8 }));
+        }
+        if (s === s0) svg.append(...cutLine('start', e.startCut, e.startCol, e.startBand, W, H, split, svg));
+        if (s === s1) svg.append(...cutLine('end', e.endCut, e.endCol, e.endBand, W, H, split, svg));
+      }
+      for (const a of d.anchors[s] || []) svg.append(...anchorMark(a, s, s0, s1, W, split));
+      const frame = h('div', { class: 'frame' }, img, svg);
+      strip.append(h('div', { class: 'sheet' + (ctx ? ' ctx' : '') }, cap, frame));
+    }
+    return strip;
+  }
+
+  function colSpan(col, W, split) { return col === 'left' ? [0, split] : col === 'right' ? [split, W] : [0, W]; }
+
+  function cutLine(which, y, col, band, W, H, split, svg) {
+    if (y === null || y === undefined) return [];
+    const [x0, x1] = colSpan(col, W, split);
+    const els = [];
+    if (band && col !== 'full') for (const by of band) if (by !== null) els.push(svgEl('line', { x1: x0, y1: by, x2: x1, y2: by, stroke: '#b45309', 'stroke-dasharray': '2 3', 'stroke-width': .8 }));
+    const line = svgEl('line', { x1: x0, y1: y, x2: x1, y2: y, stroke: '#dc2626', 'stroke-width': 2.2, class: 'cutline' });
+    const grip = svgEl('rect', { x: x0, y: y - 6, width: x1 - x0, height: 12, fill: 'transparent', class: 'cutline' });
+    const label = svgEl('text', { x: which === 'start' ? x0 + 4 : x1 - 4, y: y - 4, 'text-anchor': which === 'start' ? 'start' : 'end', fill: '#dc2626', 'font-size': 9, 'font-weight': 700 }, `${which} ${fmt(y)} ${col}`);
+    const drag = ev => {
+      ev.preventDefault();
+      const box = svg.getBoundingClientRect();
+      const toY = cy => Math.max(0, Math.min(H, (cy - box.top) / box.height * H));
+      const move = mv => { const ny = Math.round(toY(mv.clientY) * 2) / 2; line.setAttribute('y1', ny); line.setAttribute('y2', ny); grip.setAttribute('y', ny - 6); label.setAttribute('y', ny - 4); label.textContent = `${which} ${fmt(ny)} ${col}`; state.edit[which + 'Cut'] = ny; };
+      const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); changed(); };
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    };
+    grip.addEventListener('pointerdown', drag); line.addEventListener('pointerdown', drag);
+    els.push(line, grip, label);
+    return els;
+  }
+
+  function anchorMark(a, s, s0, s1, W, split) {
+    const color = a.kind === 'monograph' ? 'var(--mono)' : a.kind === 'related' ? 'var(--related)' : 'var(--heading)';
+    const y = a.titleTop ?? a.y;
+    const [x0, x1] = colSpan(a.col, W, split);
+    const line = svgEl('line', { x1: x0, y1: y, x2: x1, y2: y, stroke: color, 'stroke-width': 1, 'stroke-dasharray': a.synthetic ? '1 3' : null, opacity: .8 });
+    const txt = (a.name || a.kind || '?') + (a.uncertain ? ' ?' : '');
+    const label = svgEl('text', { x: a.col === 'right' ? x1 - 3 : x0 + 3, y: y + 8, 'text-anchor': a.col === 'right' ? 'end' : 'start', fill: color, 'font-size': 7.5, class: 'anchor-lbl' }, txt.length > 34 ? txt.slice(0, 33) + '…' : txt);
+    const bg = svgEl('rect', { x: a.col === 'right' ? x1 - 3 - txt.length * 4 : x0 + 1, y: y + 1, width: Math.min(txt.length * 4 + 4, x1 - x0), height: 9, fill: '#fff', opacity: .75, class: 'anchor-lbl' });
+    const onclick = ev => snapMenu(ev, a, y, s, s0, s1);
+    label.addEventListener('click', onclick); bg.addEventListener('click', onclick);
+    label.append(svgEl('title', {}, `${a.kind} · ${a.col} · y ${fmt(a.y)} · title top ${fmt(a.titleTop)}${a.method ? ' · ' + a.method : ''}`));
+    return [line, bg, label];
+  }
+
+  function snapMenu(ev, a, y, s, s0, s1) {
+    document.querySelectorAll('.popup').forEach(el => el.remove());
+    const frame = ev.target.closest('.frame');
+    const box = frame.getBoundingClientRect();
+    const pop = h('div', { class: 'popup', style: `left:${ev.clientX - box.left + 6}px; top:${ev.clientY - box.top + 6}px` });
+    const set = (which, col) => { state.edit[which + 'Cut'] = y; state.edit[which + 'Col'] = col; state.edit[which + 'Band'] = bandOrNull([a.bandTop ?? null, a.bandBottom ?? null]); pop.remove(); changed(); };
+    if (s === s0) pop.append(h('button', { class: 'btn', onclick: () => set('start', a.col) }, `▲ start here (${a.col})`));
+    if (s === s1) pop.append(h('button', { class: 'btn', onclick: () => set('end', a.col) }, `▼ end here (${a.col})`));
+    if (s < s0 || s > s1) pop.append(h('span', { class: 'status' }, 'include this page first'));
+    pop.append(h('button', { class: 'btn', onclick: () => pop.remove() }, '×'));
+    frame.append(pop);
+  }
+
+  // ── actions ─────────────────────────────────────────────────────────────
+  async function save() {
+    state.busy = true; renderEditor();
+    try {
+      const r = await api(`/api/books/${encodeURIComponent(state.bookId)}/entries/${encodeURIComponent(state.selected)}/save`, asOverride());
+      state.detail = r.detail; state.edit = editFromPlan(r.detail.current); state.preview = r.detail.current; state.dirty = false;
+      await refreshList();
+    } catch (err) { alert('Save failed: ' + err.message); }
+    state.busy = false; renderEditor();
+  }
+  async function reset() {
+    if (!confirm('Drop the override and re-cut with the engine’s own decision?')) return;
+    state.busy = true; renderEditor();
+    try {
+      const r = await api(`/api/books/${encodeURIComponent(state.bookId)}/entries/${encodeURIComponent(state.selected)}/reset`, {});
+      state.detail = r.detail; state.edit = editFromPlan(r.detail.current); state.preview = r.detail.current; state.dirty = false;
+      await refreshList();
+    } catch (err) { alert('Reset failed: ' + err.message); }
+    state.busy = false; renderEditor();
+  }
+  async function runHook(id) {
+    state.busy = true; state.hookOut = { hook: id, cmd: ['…'], returncode: '…', seconds: '…', stdout: 'running…' }; renderEditor();
+    try { state.hookOut = await api(`/api/books/${encodeURIComponent(state.bookId)}/entries/${encodeURIComponent(state.selected)}/hooks/${encodeURIComponent(id)}`, {}); }
+    catch (err) { state.hookOut = { hook: id, cmd: [], returncode: 'error', seconds: '', stdout: '', stderr: err.message }; }
+    state.busy = false; renderEditor();
+  }
+  async function refreshList() {
+    state.book = await api(`/api/books/${encodeURIComponent(state.bookId)}`);
+    renderTabs(); renderList();
+  }
+
+  $('#q').addEventListener('input', ev => { state.q = ev.target.value; renderList(); });
+  document.addEventListener('keydown', ev => {
+    if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA') return;
+    if ((ev.key === 'j' || ev.key === 'k') && state.book) {
+      const rows = [...document.querySelectorAll('.row')].map(el => el.dataset.name);
+      const i = rows.indexOf(state.selected);
+      const next = rows[i + (ev.key === 'j' ? 1 : -1)];
+      if (next) select(next);
+    }
+    if (ev.key === 's' && ev.ctrlKey) { ev.preventDefault(); if (state.dirty) save(); }
+  });
+  document.addEventListener('click', ev => { if (!ev.target.closest('.popup') && !ev.target.closest('.anchor-lbl')) document.querySelectorAll('.popup').forEach(el => el.remove()); });
+  window.addEventListener('beforeunload', ev => { if (state.dirty) { ev.preventDefault(); ev.returnValue = ''; } });
+  loadBooks().catch(err => { $('#editor').replaceChildren(h('div', { class: 'empty' }, `Cannot reach the server: ${err.message}`)); });
+})();
+</script>
+</body>
+</html>

@@ -151,6 +151,9 @@ def plan_headings(entry: str, start_page: int, index: list[dict], prof: Profile)
 
 
 OVERRIDE_KEYS = ("startCut", "startCol", "endCut", "endCol")
+# A column cut stops at its band's edges (the neighbouring full-width titles). The
+# review editor lets a human widen a cut to the whole column: `"startBand": null`.
+BAND_KEYS = ("startBand", "endBand")
 
 
 def apply_overrides(p: dict, ov: dict | None, prof: Profile) -> dict:
@@ -162,6 +165,10 @@ def apply_overrides(p: dict, ov: dict | None, prof: Profile) -> dict:
     for k in OVERRIDE_KEYS:
         if k in ov:
             p[k] = ov[k]
+    for k in BAND_KEYS:
+        if k in ov:
+            band = ov[k]
+            p[k] = [band[0], band[1]] if isinstance(band, (list, tuple)) and len(band) == 2 else [None, None]
     p["flags"].append("override")
     return p
 

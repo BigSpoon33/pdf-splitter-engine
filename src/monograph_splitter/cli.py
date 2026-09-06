@@ -12,18 +12,13 @@ and stay a dozen lines.
 from __future__ import annotations
 
 import argparse
-import json
-import re
 import sys
 import time
 from pathlib import Path
 
-from .cuts import apply_overrides, plan, plan_headings
-from .entries import EntryList, entries_from_vault, load_entries_json, load_known_pages, select
-from .index import add_heading_anchors, add_known_starts, index_book
+from .entries import select
 from .profile import ProfileError, load_profile
-from .render import render_review, write_excerpt, write_index_html
-from .verify import truncation_check, verify_excerpt, verify_headings
+from .session import Book
 
 OVERRIDES_HELP = """
 overrides.json — one entry per name, every field optional:
@@ -110,95 +105,29 @@ def main(argv: list[str] | None = None, *, defaults: dict | None = None, log=pri
         log(f"Error: profile — {e}")
         return 2
 
-    import fitz  # pymupdf; imported late so --help works without it
+    try:
+        book = Book.open(pdf=args.pdf, out=args.out, profile=prof, entries=args.entries,
+                         from_vault=args.from_vault, vault_folder=args.vault_folder,
+                         known_pages=args.known_pages, log=log)
+    except ValueError as e:
+        log(f"Error: {e}")
+        return 2
 
-    book = fitz.open(str(args.pdf))
-    args.out.mkdir(parents=True, exist_ok=True)
-    index = index_book(book, args.out / ".book-index.json", prof, log=log)
-
-    # ── entries ─────────────────────────────────────────────────────────────
-    if args.entries:
-        el: EntryList = load_entries_json(args.entries)
-    else:
-        el = entries_from_vault(args.from_vault, args.vault_folder)
     only = {n.strip() for n in args.only.split(",")} if args.only else None
-    chosen, unknown = select(el.entries, only, args.limit)
+    chosen, unknown = select(book.entries, only, args.limit)
     if unknown:
         log(f"--only: no entry for {unknown}")
-    headings_mode = prof.anchor_source == "headings"
-    if headings_mode:
-        located, not_found = add_heading_anchors(index, book, el.headings, prof)
-        log(f"  headings mode: {located} heading anchor(s) located on their sheets"
-            + (f", {len(not_found)} NOT found (whole-page start, flagged): {not_found}" if not_found else ""))
-    known = set(el.known_pages)
-    for kp in args.known_pages or []:
-        known |= load_known_pages(kp)
-    synth = add_known_starts(index, {p + prof.sheet_offset - 1 for p in known}, prof)
-    if synth:
-        log(f"  {synth} known start sheet(s) had no detectable header — synthetic top-of-page anchors added")
-
-    ov_path = args.out / "overrides.json"
-    if not ov_path.exists():
-        ov_path.write_text("{}\n")
-    overrides = json.loads(ov_path.read_text() or "{}")
-
-    man_path = args.out / "manifest.json"
-    manifest = {m["formula"]: m for m in json.loads(man_path.read_text())} if man_path.exists() else {}
-    review_dir = args.out / "review"
-    if args.preview:
-        review_dir.mkdir(exist_ok=True)
 
     rows: list[dict] = []
-    missing: list[str] = list(el.skipped)
     t0 = time.time()
     for entry in chosen:
-        p = (plan_headings if headings_mode else plan)(entry.name, entry.page, index, prof)
-        p = apply_overrides(p, overrides.get(entry.name), prof)
-        if not (0 <= p["sheet0"] <= p["sheet1"] < book.page_count):
-            missing.append(f"{entry.name} (sheets {p['sheet0']}–{p['sheet1']} out of range)")
-            continue
-        dest = args.out / f"{entry.name}.pdf"
-        write_excerpt(book, p, dest, redact=not args.no_redact, prof=prof)
-        slug = re.sub(r"[^A-Za-z0-9]+", "-", entry.name).strip("-")
-        if args.verify and not args.no_redact:
-            leaks = (verify_headings(dest, entry.name, p, index, prof) if headings_mode
-                     else verify_excerpt(dest, entry.name, p["kind"], prof))
-        else:
-            leaks = []
-        if leaks:
-            p["flags"].append("leak")
-        if args.verify:
-            trunc = truncation_check(p, index, prof)
-            if trunc:
-                p["flags"].append("possible-truncation")
-                leaks.append(f"truncation? {trunc}")
-        review = render_review(book, p, slug, review_dir, prof) if args.preview else []
-        row = {
-            # `formula` is the key the API's register-reference-excerpts reads (STORY-202) — kept for that consumer.
-            "formula": entry.name,
-            "file": dest.name,
-            "printedPages": [p["sheet0"] - prof.sheet_offset + 1, p["sheet1"] - prof.sheet_offset + 1],
-            "pageCount": p["sheet1"] - p["sheet0"] + 1,
-            "kind": p["kind"],
-            "startCut": p["startCut"], "startCol": p["startCol"], "startBand": p.get("startBand"),
-            "endCut": p["endCut"], "endCol": p["endCol"], "endBand": p.get("endBand"),
-            "nextFormula": p["nextFormula"],
-            "flags": p["flags"],
-            "notes": p["notes"],
-            "leaks": leaks,
-            "pageSource": "override" if "override" in p["flags"] else entry.source,
-            "redacted": not args.no_redact,
-            "bytes": dest.stat().st_size,
-            "review": review,
-            "profile": prof.tag,
-        }
-        manifest[entry.name] = row
-        rows.append(row)
-
-    ordered = [manifest[k] for k in sorted(manifest)]
-    man_path.write_text(json.dumps(ordered, indent=1, ensure_ascii=False) + "\n")
+        row = book.cut(entry, preview=args.preview, verify=args.verify, redact=not args.no_redact)
+        if row is not None:
+            rows.append(row)
+    missing = book.missing
+    book.save_manifest()
     if args.preview:
-        write_index_html(review_dir, rows, title=f"{prof.name} excerpts")
+        book.write_review_index(rows)
 
     counts: dict[str, dict[str, int]] = {"flags": {}, "notes": {}}
     for r in rows:
@@ -217,7 +146,7 @@ def main(argv: list[str] | None = None, *, defaults: dict | None = None, log=pri
     log(f"  notes (info):   {counts['notes'] or 'none'}")
     log(f"  total size: {sum(r['bytes'] for r in rows) / 1e6:.1f} MB")
     if args.preview:
-        log(f"  review sheet: {review_dir / 'index.html'}")
+        log(f"  review sheet: {book.review_dir / 'index.html'}")
     if missing:
         log(f"  skipped ({len(missing)}): {missing}")
     return 0

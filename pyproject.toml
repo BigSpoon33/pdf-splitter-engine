@@ -1,6 +1,6 @@
 [project]
 name = "monograph-splitter"
-version = "0.2.1"
+version = "0.3.0"
 description = "Per-entry PDF excerpts from a scanned reference book: finds where each monograph starts and ends on a two-column page and cuts there, with real redaction of the neighbours' share of a shared page."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,9 +14,13 @@ classifiers = [
 ]
 dependencies = ["pymupdf>=1.24"]
 
+[project.optional-dependencies]
+review = ["fastapi>=0.110", "uvicorn>=0.27"]
+
 [project.scripts]
 monograph-splitter = "monograph_splitter.cli:main_entry"
 monograph-splitter-diff = "monograph_splitter.diff_manifest:main_entry"
+monograph-splitter-review = "monograph_splitter.review.server:main_entry"
 
 [project.urls]
 Repository = "https://git.gumshu.duckdns.org/shuma/monograph-splitter"
@@ -29,7 +33,7 @@ build-backend = "hatchling.build"
 packages = ["src/monograph_splitter"]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "fastapi>=0.110", "uvicorn>=0.27", "httpx>=0.27"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
