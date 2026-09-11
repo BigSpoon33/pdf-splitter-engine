@@ -1,0 +1,39 @@
+# Layout profile: Bensky, Barolet, Ellis & Scheid, Chinese Herbal Medicine: Formulas & Strategies,
+# 2nd ed (Eastland, 2009). Scanned, image-only — the text layer is ocrmypdf/tesseract (eng), and
+# the source pages must first be column-normalised (per-page CropBox so every sheet's left column
+# starts at x≈31; the raw scans wander by up to 45pt). Fourth book, and the second heading-anchored
+# one: a principal formula opens with a Chinese title line (big type; the eng OCR renders it as
+# capitals/symbols) over a bold English title (~14pt, bbox 14–20pt tall) over an italic pinyin line,
+# then `Source`. Associated formulas repeat the same shape in body-sized type, so the entries list
+# carries the OCR'd text of the Chinese+English title lines as the heading and the engine locates it.
+name = "bensky-formulas"
+description = "Bensky et al., Formulas & Strategies 2nd ed (scanned + OCR, column-normalised, heading-anchored)"
+
+[book]
+sheet_offset = 0             # this PDF starts at printed page 1: printed page N is sheet N-1
+
+[anchors]
+source = "headings"
+heading_min_size = 5.0       # OCR'd sizes are noise (a 14pt bold title can carry size 11.5) — every line is a candidate; the text match decides
+heading_wrap_gap = 26.0      # Chinese title line top → English title line top ≈ 21pt; a wrapped English title ≈ 20pt
+heading_pad = 3.0
+heading_match = 0.85
+
+[layout]
+header_band = 71.0           # running header (chapter/section name + folio) spans y 43–70; the first body line starts at ≥ 72.5
+redact_top = 71.0
+subheader_bottom = 71.0      # no running formula-name sub-header in this book
+footer_band = 36.0           # nothing below the last body line (~842 of 900) except the odd folio on opener pages
+column_split = 0.505         # after normalisation: left column x 31–277, right column from 295, W ≈ 566 → 0.505·W = 286 in the gutter
+full_width_ratio = 0.55
+title_min_y = 30.0
+
+[title]
+script_regex = ""            # the eng OCR has no CJK glyphs — the script rule is off
+
+[breaks]
+patterns = []                # chapter tails are explicit `stop` rows (Comparative Tables of Principal Formulas)
+
+[limits]
+max_span = 16                # the longest principal entry (Gui Zhi Tang with its associated formulas) runs ~8 sheets
+long_span = 9

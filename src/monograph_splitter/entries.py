@@ -27,7 +27,9 @@ class Entry:
     name: str
     page: int
     source: str = "entries"   # "entries" | "frontmatter" — becomes manifest.pageSource
-    heading: str = ""         # headings mode: the text to locate on the start sheet ("" = top of the page)
+    heading: str = ""         # headings mode: the text to locate on the start sheet ("" = top of the page);
+                              # labels mode: an alias the header's name label carries instead (Bensky names the
+                              # label block by pharmaceutical name while the entry is named in pinyin)
 
 
 @dataclass

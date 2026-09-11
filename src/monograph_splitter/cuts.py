@@ -15,7 +15,14 @@ from .classify import UNCERTAIN_MATCH, latin_key, name_ratio, norm
 from .profile import Profile
 
 
-def plan(entry: str, start_page: int, index: list[dict], prof: Profile) -> dict:
+def plan(entry: str, start_page: int, index: list[dict], prof: Profile, aliases: tuple[str, ...] = ()) -> dict:
+    """`aliases`: other names our header block may carry — a book whose name label is the
+    pharmaceutical name while the entry is named in pinyin (Bensky) gives the former here."""
+    names = (entry, *[a for a in aliases if a])
+
+    def ratio(a: dict) -> float:
+        return max(name_ratio(n, a["name"], a.get("titleText", "")) for n in names)
+
     sheet0 = start_page + prof.sheet_offset - 1
     flags: list[str] = []     # needs a human look
     notes: list[str] = []     # informational
@@ -23,17 +30,16 @@ def plan(entry: str, start_page: int, index: list[dict], prof: Profile) -> dict:
     monos = [a for a in blocks if a["kind"] == "monograph"]
     ours, best = None, 0.0
     for a in blocks:
-        r = name_ratio(entry, a["name"], a.get("titleText", ""))
+        r = ratio(a)
         if r > best:
             ours, best = a, r
     if not (ours and best >= prof.name_match):
         # The given page may be a CONTINUATION page (it carries our name as the
         # running sub-header). Walk back to the real start.
         sub = index[sheet0].get("subheader", "")
-        if sub and difflib.SequenceMatcher(None, latin_key(sub), norm(entry)).ratio() >= UNCERTAIN_MATCH:
+        if sub and max(difflib.SequenceMatcher(None, latin_key(sub), norm(n)).ratio() for n in names) >= UNCERTAIN_MATCH:
             for back in range(sheet0 - 1, max(sheet0 - prof.walk_back, 0) - 1, -1):
-                cands = [a for a in index[back]["anchors"] if a["kind"] == "monograph"
-                         and name_ratio(entry, a["name"], a.get("titleText", "")) >= UNCERTAIN_MATCH]
+                cands = [a for a in index[back]["anchors"] if a["kind"] == "monograph" and ratio(a) >= UNCERTAIN_MATCH]
                 if cands:
                     ours, best = cands[-1], 1.0
                     sheet0 = back

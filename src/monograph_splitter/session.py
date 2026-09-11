@@ -130,7 +130,14 @@ class Book:
     # ── planning ────────────────────────────────────────────────────────────
     def auto_plan(self, entry: Entry) -> dict:
         """The engine's own decision for an entry, before any override."""
-        return (plan_headings if self.headings_mode else plan)(entry.name, entry.page, self.index, self.prof)
+        if self.headings_mode:
+            return plan_headings(entry.name, entry.page, self.index, self.prof)
+        return plan(entry.name, entry.page, self.index, self.prof, aliases=self._aliases(entry))
+
+    @staticmethod
+    def _aliases(entry: Entry) -> tuple[str, ...]:
+        """Labels mode: an entry's `heading` is the name its label block carries instead."""
+        return (entry.heading,) if entry.heading else ()
 
     def planned(self, entry: Entry, override: dict | None = None, *, use_saved: bool = True) -> dict:
         """The plan after overrides: the given one, else the saved one for that name."""
@@ -167,7 +174,7 @@ class Book:
         slug = slug_of(entry.name)
         if verify and redact:
             leaks = (verify_headings(dest, entry.name, p, self.index, self.prof) if self.headings_mode
-                     else verify_excerpt(dest, entry.name, p["kind"], self.prof))
+                     else verify_excerpt(dest, entry.name, p["kind"], self.prof, aliases=self._aliases(entry)))
         else:
             leaks = []
         if leaks:

@@ -30,7 +30,7 @@ SCHEMA: dict[str, dict[str, str]] = {
     "title": {
         "big_min_size": "big_min_size", "script_min_size": "script_min_size", "script_regex": "script_regex",
         "script_ratio": "script_ratio", "body_max_size": "body_max_size", "big_lines_min": "big_lines_min",
-        "title_reach": "title_reach", "gap_window": "gap_window", "min_gap": "min_gap",
+        "title_reach": "title_reach", "gap_window": "gap_window", "min_gap": "min_gap", "col": "title_col",
     },
     "labels": {
         "name": "label_name", "secondary": "label_secondary", "cluster_gap": "cluster_gap",
@@ -46,6 +46,7 @@ SCHEMA: dict[str, dict[str, str]] = {
     },
 }
 ANCHOR_SOURCES = ("labels", "headings")
+TITLE_COLS = ("full", "column")
 TOP_LEVEL = {"name", "description"}
 
 
@@ -71,10 +72,12 @@ class Profile:
     script_regex: str = "[一-鿿]"     # what "the script" is; empty ⇒ no script-line rule
     script_ratio: float = 0.6        # a line is a script line when ≥ this share of its glyphs match
     body_max_size: float = 11.0      # body text is below this; banner captions and titles above
-    big_lines_min: int = 3           # ≥ this many big lines above the labels = a title shattered by OCR
+    big_lines_min: int = 3           # ≥ this many big lines above the labels = a title shattered by OCR; 0 = every label block is an entry (no sub-entries)
     title_reach: float = 150.0       # a title sits within this far above its first label line
     gap_window: float = 160.0        # look this far above a label for the title-block gap
     min_gap: float = 18.0            # gaps inside a title block are smaller than this
+    title_col: str = "full"          # "full": an entry title spans both columns (its cut is a rule across the page);
+                                     # "column": entries start INSIDE a column (Bensky Materia Medica) — start and end cuts are column cuts
     # [labels]
     label_name: str = r"p\s*[i1l|]\s*n\s*y\s*[i1l|]\s*n\s+n\s*a\s*[mr]\s*[nr]?\s*e\s*[:：]?\s*(.*)"
     label_secondary: tuple[str, ...] = (
@@ -196,6 +199,8 @@ def load_profile(path: str | Path | None) -> Profile:
         raise ProfileError(f"{p}: [labels].name must have one capture group for the entry name")
     if not (0.0 < prof.column_split < 1.0):
         raise ProfileError(f"{p}: [layout].column_split must be a fraction of the page width")
+    if prof.title_col not in TITLE_COLS:
+        raise ProfileError(f"{p}: [title].col must be one of {', '.join(TITLE_COLS)} (got {prof.title_col!r})")
     if prof.anchor_source not in ANCHOR_SOURCES:
         raise ProfileError(f"{p}: [anchors].source must be one of {', '.join(ANCHOR_SOURCES)} (got {prof.anchor_source!r})")
     return prof

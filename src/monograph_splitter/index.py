@@ -31,20 +31,35 @@ def page_lines(page) -> list[Line]:
     return lines
 
 
+def label_value(lines: list[Line], label: Line, w: float, prof: Profile) -> str:
+    """A label whose value is its own line on the same baseline, to its right — Bensky's
+    `PHARMACEUTICAL NAME   Achyranthis bidentatae Radix` is two lines in the text layer,
+    so the name capture group is empty. Same column only: the other column's line on
+    that baseline is somebody else's prose."""
+    height = max(label[1] - label[0], 1.0)
+    right = [ln for ln in lines if ln is not label and ln[2] >= label[3] - 2.0
+             and min(ln[1], label[1]) - max(ln[0], label[0]) >= 0.5 * height      # shares the baseline (a bigger face tops out higher)
+             and same_column(ln, label[2], w, prof)]
+    return min(right, key=lambda ln: ln[2])[4].strip() if right else ""
+
+
 def page_anchors(lines: list[Line], w: float, prof: Profile) -> list[dict]:
     raw: list[tuple[float, float, str, str]] = []
     for ln in lines:
         m = prof.label_name_re.search(ln[4])
         if m:
-            raw.append((ln[0], ln[2], "name", m.group(1).strip()))
+            raw.append((ln[0], ln[2], "name", m.group(1).strip() or label_value(lines, ln, w, prof)))
         elif any(rx.search(ln[4]) for rx in prof.label_secondary_res):
             raw.append((ln[0], ln[2], "secondary", ""))
-    # The label lines of one header block sit within cluster_gap; collapse them.
+    # The label lines of one header block sit within cluster_gap; collapse them — per column:
+    # two-column pages interleave the columns' label lines by height, and a block in the other
+    # column must not break this one (Bensky's blocks sit inside a column).
     anchors: list[dict] = []
     for y, x0, _kind, name in raw:
-        if anchors and y - anchors[-1]["y"] <= prof.cluster_gap and is_left(x0, w, prof) == is_left(anchors[-1]["x0"], w, prof):
-            if not anchors[-1]["name"] and name:
-                anchors[-1]["name"] = name
+        prev = next((a for a in reversed(anchors) if is_left(a["x0"], w, prof) == is_left(x0, w, prof)), None)
+        if prev is not None and y - prev["y"] <= prof.cluster_gap:
+            if not prev["name"] and name:
+                prev["name"] = name
             continue
         geo = header_geometry(lines, y, x0, w, prof)
         anchors.append({"y": round(y, 1), "x0": round(x0, 1), "name": name, **geo})

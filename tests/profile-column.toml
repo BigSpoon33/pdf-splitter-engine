@@ -1,0 +1,34 @@
+# Test profile: entries that start INSIDE a column with same-baseline label values
+# (Bensky Materia Medica's shape), on the FakeBook geometry (printed page = sheet + 1).
+name = "test-column"
+description = "column-bound entries, label values on the label's baseline"
+
+[book]
+sheet_offset = 0
+
+[layout]
+header_band = 50.0
+redact_top = 45.0
+subheader_bottom = 50.0
+footer_band = 32.0
+column_split = 0.487
+
+[title]
+big_min_size = 12.0
+big_lines_min = 1
+script_regex = ""
+body_max_size = 11.0
+title_reach = 60.0
+gap_window = 120.0
+col = "column"
+
+[labels]
+name = '^\s*p\s*h\s*a\s*r\s*m\s*a\s*c\s*e\s*u\s*t\s*[i1l|]\s*c\s*a\s*l\s+n\s*a\s*[mr]\s*[nr]?\s*e\s*[:：]?\s*(.*)'
+secondary = ['^\s*f\s*a\s*m\s*[i1l|]\s*l\s*y\b', '^\s*standard\s+species\b', '^\s*english\b']
+cluster_gap = 80.0
+related_heading = '(?!x)x'
+parent_headings = '(?!x)x'
+
+[limits]
+max_span = 6
+long_span = 4

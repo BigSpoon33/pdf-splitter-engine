@@ -36,7 +36,7 @@ def truncation_check(p: dict, index: list[dict], prof: Profile) -> str | None:
     return None
 
 
-def verify_excerpt(path: Path, entry: str, kind: str, prof: Profile) -> list[str]:
+def verify_excerpt(path: Path, entry: str, kind: str, prof: Profile, aliases: tuple[str, ...] = ()) -> list[str]:
     """Headers in the finished excerpt that are not ours: a monograph may keep
     its own sub-entries; a sub-entry may keep nothing but itself."""
     import fitz
@@ -51,7 +51,7 @@ def verify_excerpt(path: Path, entry: str, kind: str, prof: Profile) -> list[str
             if not first_seen:
                 first_seen = True      # the start cut guarantees the first header is ours
                 continue
-            if name_ratio(entry, a["name"], a.get("titleText", "")) >= prof.name_match:
+            if max(name_ratio(n, a["name"], a.get("titleText", "")) for n in (entry, *aliases)) >= prof.name_match:
                 continue
             if kind == "monograph" and a["kind"] == "related":
                 continue

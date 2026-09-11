@@ -11,4 +11,4 @@ STORY-220 added the second anchor source: a book with no header label blocks
     main(["--pdf", "book.pdf", "--profile", "profiles/x.toml", "--entries", "entries.json", "--out", "dir"])
 """
 
-ENGINE_VERSION = 14   # bumps whenever an indexing rule changes (the index cache is keyed on it)
+ENGINE_VERSION = 16   # bumps whenever an indexing rule changes (the index cache is keyed on it)

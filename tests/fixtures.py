@@ -77,6 +77,22 @@ class FakeBook:
     def heading(self, y: float, text: str = "AUTHORS' COMMENTS", col: str = "right") -> float:
         return self.text(y, text, size=9.5, x=LEFT if col == "left" else RIGHT) + 4
 
+    # ── Bensky Materia Medica-like typography (entries start inside a column) ──
+    def herb(self, y: float, pinyin: str, pharm: str, col: str = "left") -> float:
+        """A Materia Medica header: a 12.5pt italic pinyin line, then small-caps labels whose
+        values sit on the same baseline to the right. y is the pinyin baseline; returns the
+        next body baseline."""
+        x = LEFT if col == "left" else RIGHT
+        self.text(y, pinyin, size=12.5, x=x, font="heit")
+        self.text(y + 20, "PHARMACEUTICAL NAME", size=8, x=x)
+        self.text(y + 20, pharm, size=9, x=x + 100)
+        self.text(y + 33, "FAMILY", size=8, x=x)
+        self.text(y + 33, "Testaceae", size=9, x=x + 100)
+        self.text(y + 46, "STANDARD SPECIES", size=8, x=x)
+        self.text(y + 59, "ENGLISH", size=8, x=x)
+        self.text(y + 59, "test root", size=9, x=x + 100)
+        return y + 78
+
     # ── Maciocia-like typography (headings mode) ─────────────────────────────
     def pattern(self, y: float, name: str, col: str = "left", wrap: str | None = None, margin: str | None = None) -> float:
         """A pattern heading (12.5pt bold, column-bound), optionally wrapped over two lines

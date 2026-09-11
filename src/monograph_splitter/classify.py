@@ -97,14 +97,21 @@ def header_geometry(lines: list[Line], y: float, x0: float, w: float, prof: Prof
     # …or the title shattered into per-glyph lines: big_lines_min big lines never
     # happen otherwise (a continuation page has exactly one — the sub-header).
     title: Line | None = (
-        min(big + script_big, key=lambda ln: ln[0]) if (script_big or len(big) >= prof.big_lines_min) else None
+        min(big + script_big, key=lambda ln: ln[0]) if (script_big or (big and len(big) >= prof.big_lines_min)) else None
     )
+    if title is None and prof.big_lines_min == 0:
+        # big_lines_min = 0: this book has no sub-entries — every label block is an entry, and
+        # its title is whatever sits just above the labels in its column (or the label line itself)
+        near = [ln for ln in reach if same_column(ln, x0, w, prof)]
+        title = max(near, key=lambda ln: ln[0]) if near else next(ln for ln in lines if ln[0] == y and ln[2] == x0)
     if title is not None:
         cut = gap_cut(above, y, prof, lines)
         method = "gap"
         if cut is None:
             cut, method = title[0] - 4, "title"
-        kind, col, size = "monograph", "full", title[5]
+        kind, size = "monograph", title[5]
+        # a Chen & Chen title spans both columns; a Bensky Materia Medica entry starts inside one
+        col = "full" if prof.title_col == "full" else ("left" if is_left(x0, w, prof) else "right")
     else:
         col_lines = [ln for ln in above if same_column(ln, x0, w, prof)]
         col = "left" if is_left(x0, w, prof) else "right"

@@ -1,0 +1,57 @@
+# Layout profile: Bensky, Clavey & Stöger, Chinese Herbal Medicine: Materia Medica, 3rd ed
+# (Eastland, 2004). Scanned with a good OCR text layer (1,346 sheets), two columns. The pages
+# must first be gutter-normalised (normalize_bensky_mm_columns.py: a per-page CropBox, 600pt
+# wide, with the column gutter at x=300 — the raw scans put it anywhere from 262 to 313).
+# Fifth book, and the first whose entries start INSIDE a column: a herb opens — wherever the
+# previous one ended — with a big Chinese title (image only: not one CJK glyph reached the text
+# layer), an italic pinyin line (≈12.5pt), then a block of small-caps labels whose values sit
+# on the same baseline to their right: PHARMACEUTICAL NAME / FAMILY / STANDARD SPECIES /
+# ENGLISH / JAPANESE / KOREAN / TEXT IN WHICH FIRST APPEARED / PROPERTIES / … The label block
+# is the anchor; the OCR's type sizes are noise (a species line under the labels can carry
+# 29pt), so the pinyin line is the only "big" line the engine is asked to trust, and the start
+# cut above the image-only Chinese title comes from ink measured by extract_bensky_mm_index.py.
+name = "bensky-materia-medica"
+description = "Bensky, Clavey & Stöger, Materia Medica 3rd ed (scanned + OCR, two columns, entries start inside a column)"
+
+[book]
+sheet_offset = 33            # printed page N is sheet N+32 (0-based): p.4 → sheet 36, p.638 → sheet 670
+
+[layout]
+header_band = 50.0           # running header (folio + chapter name) at y 31–36; the first body line starts at ≥ 59
+redact_top = 45.0
+subheader_bottom = 50.0      # no running entry-name sub-header in this book
+footer_band = 30.0           # the last body line ends ≈ 745 of H ≈ 782; nothing below it
+column_split = 0.5           # after normalisation the gutter centre is at x=300 of W=600 on every sheet (gutter ≈ 13–18pt wide)
+full_width_ratio = 0.55
+title_min_y = 30.0
+
+[title]
+big_min_size = 11.5          # the italic pinyin line OCRs at 11.7–13.3; body text 7.5–10
+big_lines_min = 0            # every label block is a herb (no sub-entries): the pinyin line is its title when the OCR made it big, else whatever sits just above the labels
+script_regex = ""            # the Chinese title is image-only — the script rule is off
+body_max_size = 11.0
+title_reach = 60.0           # pinyin line top → PHARMACEUTICAL NAME top ≈ 21pt; nothing else big that close
+gap_window = 120.0
+min_gap = 18.0
+col = "column"               # an entry starts inside a column: its start and end cuts are column cuts
+
+[labels]
+# The small-caps label of a herb's own block, value in Times on the same baseline. `PHARMACEUTICAL NAME: PORIAE CUTIS`
+# — a colon and a capitals value on one line — is the inline block of a sub-entry (fu ling pi inside Fu Ling, xi gua pi inside
+# Xi Gua); the book's index counts those inside the parent's pages, so they must not start a block.
+name = '^\s*p\s*h\s*a\s*r\s*m\s*a\s*c\s*e\s*u\s*t\s*[i1l|!]\s*c\s*a\s*l\s+n\s*a\s*[mr]\s*[nr]?\s*e\s*(?![:：])\s*(.*)'
+secondary = []               # ONLY the name label starts a block: a block often breaks across a column or page (FAMILY … KOREAN
+                             # continue at the top of the next column), and a secondary-only cluster there would be a phantom entry.
+                             # ("STANDARD SPECIES" also appears in prose.) The secondary labels are not needed to find a herb.
+cluster_gap = 20.0           # one name label per block; two herbs never start within 20pt of each other in one column (they can within 110)
+related_heading = '(?!x)x'   # no RELATED sub-entries: every label block is a herb
+parent_headings = '(?!x)x'
+
+[breaks]
+patterns = ['^\s*chapter\s+\d+\s+contents']   # each chapter opens with a "Chapter N Contents" page (13pt) after a blank/plate sheet
+min_size = 12.5
+max_len = 28
+
+[limits]
+max_span = 12                # the longest herbs (Ephedra, Ginseng, Licorice) run 6–7 sheets
+long_span = 7
