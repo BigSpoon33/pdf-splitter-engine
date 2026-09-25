@@ -17,7 +17,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from .cuts import apply_overrides, cut_rects, plan, plan_headings
-from .entries import Entry, EntryList, entries_from_vault, load_entries_json, load_known_pages
+from .entries import Entry, EntryList, entries_from_rows, entries_from_vault, load_entries_json, load_known_pages
 from .index import add_heading_anchors, add_known_starts, index_book
 from .profile import Profile, load_profile
 from .render import render_review, write_excerpt, write_index_html
@@ -51,7 +51,7 @@ class Book:
     # ── construction ────────────────────────────────────────────────────────
     @classmethod
     def open(cls, *, pdf: Path, out: Path, profile: Profile | Path | str | None,
-             entries: Path | None = None, from_vault: Path | None = None, vault_folder: str = "TCM_Formulas",
+             entries: Path | str | list[dict] | EntryList | None = None, from_vault: Path | None = None, vault_folder: str = "TCM_Formulas",
              known_pages: list[Path] | None = None, log=print) -> "Book":
         import fitz  # pymupdf; imported late so --help works without it
 
@@ -60,12 +60,18 @@ class Book:
         out = Path(out)
         out.mkdir(parents=True, exist_ok=True)
         index = index_book(doc, out / ".book-index.json", prof, log=log)
-        if entries:
+        # entries: a JSON file (the CLI), or the rows / EntryList in memory (the web worker —
+        # no file per job); an empty list is a valid, empty book, not a missing argument
+        if isinstance(entries, EntryList):
+            el = entries
+        elif isinstance(entries, list):
+            el = entries_from_rows(entries)
+        elif entries:
             el = load_entries_json(Path(entries))
         elif from_vault:
             el = entries_from_vault(Path(from_vault), vault_folder)
         else:
-            raise ValueError("give entries=<json path> or from_vault=<path>")
+            raise ValueError("give entries=<json path | rows | EntryList> or from_vault=<path>")
         headings_mode = prof.anchor_source == "headings"
         if headings_mode:
             located, not_found = add_heading_anchors(index, doc, el.headings, prof)

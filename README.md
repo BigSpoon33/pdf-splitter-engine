@@ -168,3 +168,30 @@ entry's heading still readable inside the excerpt is a `leak`.
 Bundled profile: `maciocia-foundations` (sheet offset 29, two columns split at 0.45,
 header band 46 / redaction from 52 so the running part number survives, footer band 36).
 
+
+## Web mode (library use, no files per job)
+
+The pdf-splitter web service drives the engine with a settings dict and an in-memory
+section list:
+
+```python
+from monograph_splitter.profile import profile_from_dict
+from monograph_splitter.session import Book
+
+prof = profile_from_dict({"column_split": 0.5, "heading_min_size": 13, "single_column": False})
+book = Book.open(pdf=pdf, out=job_dir, profile=prof,
+                 entries=[{"name": "Chapter 1", "page": 3, "heading": "Introduction"}])
+```
+
+- `profile_from_dict(d, base=WEB_BASE)` accepts only `WEB_KEYS` (`column_split`,
+  `header_band`, `footer_band`, `redact_top`, `heading_min_size`, `heading_match`,
+  `heading_wrap_gap`, `max_span`, `single_column`); any other key, a wrong type or an
+  out-of-range value is a `ProfileError` naming it. `WEB_BASE` is headings mode, no
+  script-title or summary-page rules, `max_span = 200`, and a page is the **1-based sheet
+  number** (PDF page 1 = the first sheet, i.e. engine `sheet_offset = 0`).
+- `single_column: true` sets `column_split = 0.999` and `full_width_ratio = 0.0`: every
+  line is in the left column and every heading full-width, so every cut spans the page.
+- `sha256` is the hash of the effective values, so the index cache (and any
+  settings-keyed cache) changes with the settings and not with key order.
+- `Book.open(entries=...)` takes a JSON path, the rows themselves, or an `EntryList`;
+  rows go through `entries.entries_from_rows`, the same validation `--entries` uses.
