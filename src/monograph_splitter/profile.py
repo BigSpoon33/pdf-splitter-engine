@@ -136,7 +136,8 @@ class Profile:
 
     @cached_property
     def chapter_only_re(self) -> re.Pattern:
-        return re.compile(self.chapter_only, re.I)
+        # an empty pattern would match every line; empty means "no chapter-only rule"
+        return re.compile(self.chapter_only or r"(?!)", re.I)
 
     @cached_property
     def script_re(self) -> re.Pattern | None:
@@ -218,7 +219,9 @@ def _validated(prof: Profile, where) -> Profile:
 # N + sheet_offset - 1, so that is sheet_offset = 0.
 # A book without running sub-headers must not lose a strip under the header band on a
 # column cut, hence subheader_bottom = redact_top (cut_rects' "previous entry's running
-# name" rectangle becomes zero-height).
+# name" rectangle becomes zero-height). The user's section list is the only authority on
+# where a section starts, so no bare "Chapter N" line breaks one (chapter_only = ""), and
+# a long section is normal, not a review flag (long_span = max_span).
 WEB_BASE = Profile(
     name="web",
     description="pdf-splitter web mode: headings from the user's section list, sheet numbers as pages",
@@ -226,7 +229,9 @@ WEB_BASE = Profile(
     sheet_offset=0,
     script_regex="",
     break_patterns=(),
+    chapter_only="",
     max_span=200,
+    long_span=200,
     subheader_bottom=Profile.redact_top,
 )
 WEB_KEYS = ("column_split", "header_band", "footer_band", "redact_top", "heading_min_size",
@@ -269,6 +274,8 @@ def profile_from_dict(d: dict, base: Profile = WEB_BASE) -> Profile:
         raise ProfileError(f"settings: max_span must be ≥ 1 (got {values['max_span']!r})")
     if "redact_top" in values and base.subheader_bottom == base.redact_top:
         values["subheader_bottom"] = values["redact_top"]
+    if "max_span" in values and base.long_span == base.max_span:
+        values["long_span"] = values["max_span"]
     prof = replace(base, path="", sha256="", **values)
     effective = {f.name: getattr(prof, f.name) for f in fields(Profile) if f.name not in ("path", "sha256")}
     digest = hashlib.sha256(json.dumps(effective, sort_keys=True).encode("utf-8")).hexdigest()

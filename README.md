@@ -188,13 +188,37 @@ book = Book.open(pdf=pdf, out=job_dir, profile=prof,
   `heading_wrap_gap`, `max_span`, `single_column`); any other key, a wrong type or an
   out-of-range value is a `ProfileError` naming it. `WEB_BASE` is headings mode, no
   script-title or summary-page rules, `max_span = 200`, and a page is the **1-based sheet
-  number** (PDF page 1 = the first sheet, i.e. engine `sheet_offset = 0`).
+  number** (PDF page 1 = the first sheet, i.e. engine `sheet_offset = 0`). The user's
+  section list is the only authority on where a section starts: no bare "Chapter N" line
+  breaks one (`chapter_only = ""` disables that rule), and `long_span = max_span`, so a
+  long section is not flagged `long-span` (setting `max_span` moves both).
 - `single_column: true` sets `column_split = 0.999` and `full_width_ratio = 0.0`: every
   line is in the left column and every heading full-width, so every cut spans the page.
 - `sha256` is the hash of the effective values, so the index cache (and any
   settings-keyed cache) changes with the settings and not with key order.
 - `Book.open(entries=...)` takes a JSON path, the rows themselves, or an `EntryList`;
   rows go through `entries.entries_from_rows`, the same validation `--entries` uses.
+
+### Cutting every section (`Book.cut_all`)
+
+```python
+summary = book.cut_all(progress=lambda done, total, name: ..., verify=True, preview=False,
+                       only=None, limit=None, redact=True)
+# → {written: [manifest row], flags: {flag: n}, notes: {note: n},
+#    leaks: {name: [str]}, missing: [str], unknown: [str]}
+```
+
+The CLI is this call plus its log lines. It cuts the entries (or the names in `only`,
+then the first `limit`), saves `manifest.json` (merged with earlier runs, like `--only`)
+and, when previewing, `review/index.html`. `progress(done, total, name)` fires after each
+entry, including one whose plan falls off the book (it lands in `missing`). `leaks` holds
+the rows flagged `leak` by verification. `unknown` lists names in `only` that have no entry.
+
+An entry's name is its file name (`<name>.pdf`, the manifest's `file`). A name containing
+`/`, `\`, a NUL, or equal to `.` / `..` is refused with a `ValueError` naming it, before
+anything is written. `cut_all` doesn't make names unique: two entries with one name share a
+file, a manifest row and an override. The web job layer passes unique, file-safe names and
+keeps the display names itself.
 
 ### Proposing sections (`detect`)
 
@@ -209,8 +233,9 @@ from monograph_splitter import detect
 doc = fitz.open(pdf)
 detect.outline_levels(doc)          # [{level, count}] per outline depth; no outline → []
 detect.outline_entries(doc, 1)      # [{name, page, heading, level, y?}]
-detect.heading_candidates(doc, min_ratio=1.3, max_len=90, header_band=50, footer_band=32,
-                          wrap_gap=16, column_split=0.487, full_width_ratio=0.55)
+detect.heading_candidates(doc, min_ratio=1.3, max_len=90, profile=prof)
+# or explicit geometry, which wins over the profile's:
+#   header_band=50, footer_band=32, wrap_gap=16, column_split=0.487, full_width_ratio=0.55
 # → {body_size, levels: [{size, count}], candidates: [{name, page, heading, size, level, y, col}]}
 ```
 
@@ -229,5 +254,9 @@ detect.heading_candidates(doc, min_ratio=1.3, max_len=90, header_band=50, footer
   "C", "Mix" or "Lesson 3" survives. A line repeated verbatim at one size on ≥ 30% of pages
   (a running header, even with bands of 0) and digit folios (`12`, `- 12 -`, `Page 3`,
   anywhere) never count. Sizes within 0.5 pt share a `level` (largest = 1); `col` is
-  `left`/`right`/`full` by the column geometry passed in (use the web settings' profile
-  values so it agrees with the cuts).
+  `left`/`right`/`full` by the column geometry passed in.
+- **One profile for both calls:** `profile=prof` supplies the bands, `column_split`,
+  `full_width_ratio` and `wrap_gap` (the profile's `heading_wrap_gap`). Pass the job's
+  profile to `heading_candidates` and to `Book.open`, so detection wraps and classifies a
+  heading the same way `locate_heading` finds it. With neither a profile nor keywords, the
+  `Profile` defaults apply.

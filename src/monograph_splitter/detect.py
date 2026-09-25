@@ -192,10 +192,10 @@ def _reading_order(cands: list[dict]) -> list[dict]:
     return sorted(cands, key=lambda c: (sum(1 for fy in fulls if fy < c["y"]), colk[c["col"]], c["y"]))
 
 
-def heading_candidates(doc, *, min_ratio: float = 1.3, max_len: int = 90,
-                       header_band: float = Profile.header_band, footer_band: float = Profile.footer_band,
-                       wrap_gap: float = Profile.heading_wrap_gap, column_split: float = Profile.column_split,
-                       full_width_ratio: float = Profile.full_width_ratio) -> dict:
+def heading_candidates(doc, *, min_ratio: float = 1.3, max_len: int = 90, profile: Profile | None = None,
+                       header_band: float | None = None, footer_band: float | None = None,
+                       wrap_gap: float | None = None, column_split: float | None = None,
+                       full_width_ratio: float | None = None) -> dict:
     """Lines set at ≥ body × min_ratio, outside the header/footer bands, as section
     proposals: {body_size, levels: [{size, count}], candidates: [{name, page, heading,
     size, level, y, col}]}. A heading wrapped over up to three lines (starting on the
@@ -206,7 +206,17 @@ def heading_candidates(doc, *, min_ratio: float = 1.3, max_len: int = 90,
     second-guessed by its position. A line repeated verbatim on ≥ RUNNING_SHARE of the
     pages (a running header) and a digit-only folio never count anywhere. Levels cluster
     the candidates' sizes, largest = 1. Pass the web settings' geometry (`single_column` →
-    column_split 0.999, full_width_ratio 0) so `col` agrees with the cuts."""
+    column_split 0.999, full_width_ratio 0) so `col` agrees with the cuts — simplest by
+    passing the job's `profile`: the geometry (bands, column_split, full_width_ratio) and
+    wrap_gap (its heading_wrap_gap) then come from it, so detection wraps a heading exactly
+    as locate_heading will. An explicit keyword wins over the profile; with neither, the
+    Profile defaults apply."""
+    prof = profile or Profile()
+    header_band = prof.header_band if header_band is None else header_band
+    footer_band = prof.footer_band if footer_band is None else footer_band
+    wrap_gap = prof.heading_wrap_gap if wrap_gap is None else wrap_gap
+    column_split = prof.column_split if column_split is None else column_split
+    full_width_ratio = prof.full_width_ratio if full_width_ratio is None else full_width_ratio
     sheets: list[tuple[float, float, list[Line]]] = []
     for page in doc:
         sheets.append((page.rect.width, page.rect.height, page_lines(page)))

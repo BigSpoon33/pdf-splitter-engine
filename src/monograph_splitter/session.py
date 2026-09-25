@@ -4,20 +4,21 @@ One open book: the PDF, its profile, the cached index, the entry list, the
 hand overrides and the manifest — and the operations the CLI and the review
 editor share (plan an entry, cut it, persist an override, render a sheet).
 
-The CLI (`cli.main`) is a loop over `Book.cut()`; the review server
-(`review.server`) calls the same methods one entry at a time, so an edit made in
-the browser produces byte-for-byte what a re-run of the CLI would.
+The CLI (`cli.main`) and the web worker call `Book.cut_all()`, one loop over
+`Book.cut()`; the review server (`review.server`) calls `cut` one entry at a time, so
+an edit made in the browser produces byte-for-byte what a re-run of the CLI would.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable, Iterable
 from copy import deepcopy
 from pathlib import Path
 
 from .cuts import apply_overrides, cut_rects, plan, plan_headings
-from .entries import Entry, EntryList, entries_from_rows, entries_from_vault, load_entries_json, load_known_pages
+from .entries import Entry, EntryList, entries_from_rows, entries_from_vault, load_entries_json, load_known_pages, select
 from .index import add_heading_anchors, add_known_starts, index_book
 from .profile import Profile, load_profile
 from .render import render_review, write_excerpt, write_index_html
@@ -30,6 +31,15 @@ SHEET_CACHE_DIR = ".sheets"
 
 def slug_of(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", name).strip("-")
+
+
+def safe_filename(name: str) -> str:
+    """`<name>.pdf`, or ValueError when the name could leave the output directory. Names
+    stay the filenames the CLI's consumers read (`file`), so nothing is rewritten; a web
+    section list is user-editable, so a separator or `..` is refused instead."""
+    if not name or name in (".", "..") or any(c in name for c in ("/", "\\", "\0")):
+        raise ValueError(f"entry name {name!r} can't be a file name (no '/', '\\', NUL, '.' or '..')")
+    return f"{name}.pdf"
 
 
 class Book:
@@ -171,11 +181,11 @@ class Book:
             redact: bool = True) -> dict | None:
         """Write the excerpt for one entry and record its manifest row. Returns the
         row, or None (and appends to `missing`) when the plan falls off the book."""
+        dest = self.excerpt_path(entry.name)
         p = self.planned(entry, override)
         if not self.in_range(p):
             self.missing.append(f"{entry.name} (sheets {p['sheet0']}–{p['sheet1']} out of range)")
             return None
-        dest = self.out / f"{entry.name}.pdf"
         write_excerpt(self.doc, p, dest, redact=redact, prof=self.prof)
         slug = slug_of(entry.name)
         if verify and redact:
@@ -215,6 +225,39 @@ class Book:
         self.manifest[entry.name] = row
         return row
 
+    def cut_all(self, progress: Callable[[int, int, str], None] | None = None, verify: bool = True,
+                preview: bool = False, only: Iterable[str] | None = None, *, limit: int | None = None,
+                redact: bool = True) -> dict:
+        """Cut every entry (or the names in `only`, then the first `limit`), save the manifest
+        and, when previewing, the review index. `progress(done, total, name)` fires after each
+        entry, one that falls off the book included. An entry name that can't be a file name
+        is a ValueError before anything is written. Returns
+        {written: [row], flags: {flag: n}, notes: {note: n}, leaks: {name: [str]} (rows flagged
+        `leak`), missing: [str] (book.missing), unknown: [names in `only` with no entry]}."""
+        chosen, unknown = select(self.entries, set(only) if only else None, limit)
+        for entry in chosen:
+            safe_filename(entry.name)   # refuse before the first write, not half-way through the book
+        rows: list[dict] = []
+        for done, entry in enumerate(chosen, 1):
+            row = self.cut(entry, preview=preview, verify=verify, redact=redact)
+            if row is not None:
+                rows.append(row)
+            if progress is not None:
+                progress(done, len(chosen), entry.name)
+        self.save_manifest()
+        if preview:
+            self.write_review_index(rows)
+        flags: dict[str, int] = {}
+        notes: dict[str, int] = {}
+        for r in rows:
+            for f in r["flags"]:
+                flags[f] = flags.get(f, 0) + 1
+            for n in r["notes"]:
+                notes[n] = notes.get(n, 0) + 1
+        return {"written": rows, "flags": flags, "notes": notes,
+                "leaks": {r["formula"]: r["leaks"] for r in rows if "leak" in r["flags"]},
+                "missing": list(self.missing), "unknown": unknown}
+
     def save_manifest(self) -> None:
         ordered = [self.manifest[k] for k in sorted(self.manifest)]
         (self.out / MANIFEST_NAME).write_text(json.dumps(ordered, indent=1, ensure_ascii=False) + "\n")
@@ -252,7 +295,7 @@ class Book:
         return data
 
     def excerpt_path(self, name: str) -> Path:
-        return self.out / f"{name}.pdf"
+        return self.out / safe_filename(name)
 
     def close(self) -> None:
         self.doc.close()

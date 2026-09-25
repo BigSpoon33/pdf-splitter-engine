@@ -34,10 +34,12 @@ def test_an_empty_dict_is_web_base_and_every_web_key_overrides_only_itself():
         if key != "single_column":
             assert getattr(prof, key) == value
     assert isinstance(prof.header_band, float) and isinstance(prof.max_span, int)
-    untouched = [n for n in same if n not in WEB_VALUES and n != "subheader_bottom"]
+    untouched = [n for n in same if n not in WEB_VALUES and n not in ("subheader_bottom", "long_span")]
     assert all(getattr(prof, n) == getattr(WEB_BASE, n) for n in untouched)
     # no running sub-header in a web book: the strip under the header band is never cut
     assert prof.subheader_bottom == prof.redact_top == 38.0
+    # a web section is never "long" for review: long_span follows max_span
+    assert prof.long_span == prof.max_span == WEB_VALUES["max_span"]
     assert prof.tag.startswith("web@")
 
 

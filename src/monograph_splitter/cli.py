@@ -16,7 +16,6 @@ import sys
 import time
 from pathlib import Path
 
-from .entries import select
 from .profile import ProfileError, load_profile
 from .session import Book
 
@@ -114,27 +113,16 @@ def main(argv: list[str] | None = None, *, defaults: dict | None = None, log=pri
         return 2
 
     only = {n.strip() for n in args.only.split(",")} if args.only else None
-    chosen, unknown = select(book.entries, only, args.limit)
-    if unknown:
-        log(f"--only: no entry for {unknown}")
-
-    rows: list[dict] = []
     t0 = time.time()
-    for entry in chosen:
-        row = book.cut(entry, preview=args.preview, verify=args.verify, redact=not args.no_redact)
-        if row is not None:
-            rows.append(row)
-    missing = book.missing
-    book.save_manifest()
-    if args.preview:
-        book.write_review_index(rows)
-
-    counts: dict[str, dict[str, int]] = {"flags": {}, "notes": {}}
-    for r in rows:
-        for f in r["flags"]:
-            counts["flags"][f] = counts["flags"].get(f, 0) + 1
-        for n in r["notes"]:
-            counts["notes"][n] = counts["notes"].get(n, 0) + 1
+    try:
+        summary = book.cut_all(verify=args.verify, preview=args.preview, only=only, limit=args.limit,
+                               redact=not args.no_redact)
+    except ValueError as e:
+        log(f"Error: {e}")
+        return 2
+    if summary["unknown"]:
+        log(f"--only: no entry for {summary['unknown']}")
+    rows, missing = summary["written"], summary["missing"]
     log(f"wrote {len(rows)} per-entry PDFs -> {args.out}  ({time.time() - t0:.0f}s, profile {prof.tag})")
     log(f"  top cuts: {sum(1 for r in rows if r['startCut'] is not None)}   "
         f"bottom cuts: {sum(1 for r in rows if r['endCut'] is not None)}   "
@@ -142,8 +130,8 @@ def main(argv: list[str] | None = None, *, defaults: dict | None = None, log=pri
         f"pages per entry: min {min((r['pageCount'] for r in rows), default=0)}, "
         f"max {max((r['pageCount'] for r in rows), default=0)}, "
         f"mean {sum(r['pageCount'] for r in rows) / max(len(rows), 1):.1f}")
-    log(f"  flags (review): {counts['flags'] or 'none'}")
-    log(f"  notes (info):   {counts['notes'] or 'none'}")
+    log(f"  flags (review): {summary['flags'] or 'none'}")
+    log(f"  notes (info):   {summary['notes'] or 'none'}")
     log(f"  total size: {sum(r['bytes'] for r in rows) / 1e6:.1f} MB")
     if args.preview:
         log(f"  review sheet: {book.review_dir / 'index.html'}")
