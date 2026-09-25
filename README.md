@@ -195,3 +195,34 @@ book = Book.open(pdf=pdf, out=job_dir, profile=prof,
   settings-keyed cache) changes with the settings and not with key order.
 - `Book.open(entries=...)` takes a JSON path, the rows themselves, or an `EntryList`;
   rows go through `entries.entries_from_rows`, the same validation `--entries` uses.
+
+### Proposing sections (`detect`)
+
+Without an entry list, `monograph_splitter.detect` proposes one. Both sources return rows
+that `Book.open(entries=…)` takes unchanged (`page` = 1-based sheet, `heading` = the text
+to locate), and neither writes anything or reads a page's text more than once:
+
+```python
+import fitz
+from monograph_splitter import detect
+
+doc = fitz.open(pdf)
+detect.outline_levels(doc)          # [{level, count}] per outline depth; no outline → []
+detect.outline_entries(doc, 1)      # [{name, page, heading, level, y?}]
+detect.heading_candidates(doc, min_ratio=1.3, max_len=90, header_band=50, footer_band=32,
+                          wrap_gap=16, column_split=0.487, full_width_ratio=0.55)
+# → {body_size, levels: [{size, count}], candidates: [{name, page, heading, size, level, y, col}]}
+```
+
+- **Outline:** items at exactly `level` that land on a sheet (a broken or external link,
+  page -1, is dropped). `heading` is the title without its leading number (`1.2 Scope` →
+  `Scope`). `y` (page coordinates, y down) is present only when the destination names a
+  point (`/XYZ` with a top, `/FitH`, `/FitBH`, `/FitR`, or a named destination that
+  resolves to one); `/Fit` and `/XYZ null null` have none.
+- **Big headings:** the body size is the char-weighted modal type size; a candidate is a
+  line (or up to three wrapped lines, tops within `wrap_gap`) at ≥ `body × min_ratio`,
+  outside the header/footer bands, ≤ `max_len` characters joined. Running headers/footers
+  (the same text, digits aside, at the page edge of ≥ 30% of pages) and page-number-only
+  lines never count. Sizes within 0.5 pt share a `level` (largest = 1); `col` is
+  `left`/`right`/`full` by the column geometry passed in (use the web settings' profile
+  values so it agrees with the cuts).

@@ -190,3 +190,81 @@ def heading_book(path) -> dict:
             {"name": "Zeta Pattern", "page": 7, "heading": "Zeta Pattern"},
         ],
     }
+
+
+def headed_book(path, outline: bool = True) -> dict:
+    """A generic two-column book for detection (web mode: page = 1-based sheet): body 9.5pt,
+    chapters 16pt bold, sections 12pt bold, a 14pt running header on every page (inside the
+    header band) and a 12.5pt page number in the footer band — both big enough to pass for
+    headings if the bands were off.
+      p1  Chapter 1 at the top of the left column; section 'First Principles' mid-left
+      p2  section wrapped over two lines in the right column (14pt leading)
+      p3  Chapter 2 full-width at the top; section 'Middle Matters' in the left column
+      p4  left column all body; Chapter 3 starts MID-RIGHT-COLUMN
+      p5  section 'Final Section' at the top of the right column
+      p6  body only (the book ends there)
+    The outline (set_toc, then raw destinations rewritten): chapters at level 1 and
+    sections at level 2 with leading numbers; '1 Foundations of Testing' and
+    '2 Chapter Two …' carry a point, '1.1' is /Fit and '1.2' /XYZ null null (no point),
+    '3 Closing Chapter' a named destination with a point, '3.1' a URI (page -1)."""
+    b = FakeBook()
+    running = "The Synthetic Handbook"
+
+    def page(n: int) -> None:
+        b.cur = b.doc.new_page(width=W, height=H)
+        b.text(35, running, size=14, x=54, font="hebo")
+        b.text(775, str(n), size=12.5, x=255, font="hebo")
+
+    def body(y: float, n: int, col: str = "left", prefix: str = "body") -> float:
+        x = LEFT if col == "left" else RIGHT
+        for i in range(n):
+            b.text(y + LINE * i, f"{prefix} {i} of the running prose", size=9.5, x=x)
+        return y + LINE * n
+
+    def head(y: float, s: str, size: float, col: str = "left") -> float:
+        return b.text(y, s, size=size, x=LEFT if col == "left" else RIGHT, font="hebo") + 8
+
+    page(1); y = head(90, "Foundations of Testing", 16); y = body(y, 20); y = head(y + 10, "First Principles", 12)
+    body(y, 25); body(80, 55, "right")
+    page(2); body(80, 55); y = body(80, 20, "right"); y = head(y + 12, "Second Principles of Wrapped", 12, "right")
+    y = head(y - 8 + 14 - LINE, "Section Headings", 12, "right"); body(y, 25, "right")
+    page(3); y = head(90, "Chapter Two: The Middle of the Synthetic Book", 16); y = body(y + 4, 20)
+    y = head(y + 10, "Middle Matters", 12); body(y, 22); body(122, 50, "right")
+    page(4); body(80, 55); y = body(80, 25, "right"); y = head(y + 20, "Closing Chapter", 16, "right"); body(y, 25, "right")
+    page(5); body(80, 55); y = head(90, "Final Section", 12, "right"); body(y, 50, "right")
+    page(6); body(80, 55); body(80, 55, "right")
+    if outline:
+        b.doc.set_toc([
+            [1, "1 Foundations of Testing", 1, {"kind": fitz.LINK_GOTO, "to": fitz.Point(0, 70), "page": 0}],
+            [2, "1.1 First Principles", 1],
+            [2, "1.2 Second Principles of Wrapped Section Headings", 2],
+            [1, "2 Chapter Two: The Middle of the Synthetic Book", 3],
+            [2, "2.1 Middle Matters", 3],
+            [1, "3 Closing Chapter", 4],
+            [2, "3.1 Final Section", 5],
+        ])
+        items = {it[1]: it[3]["xref"] for it in b.doc.get_toc(simple=False)}
+        p2, p4 = b.doc[1].xref, b.doc[3].xref
+        b.doc.xref_set_key(items["1.1 First Principles"], "A", f"<</S/GoTo/D[{b.doc[0].xref} 0 R/Fit]>>")
+        b.doc.xref_set_key(items["1.2 Second Principles of Wrapped Section Headings"], "A",
+                           f"<</S/GoTo/D[{p2} 0 R/XYZ null null null]>>")
+        names = b.doc.get_new_xref()
+        b.doc.update_object(names, f"<</Names[(ch3)[{p4} 0 R/XYZ 0 {H - 400:.1f} null]]>>")
+        b.doc.xref_set_key(b.doc.pdf_catalog(), "Names", f"<</Dests {names} 0 R>>")
+        b.doc.xref_set_key(items["3 Closing Chapter"], "A", "<</S/GoTo/D(ch3)>>")
+        b.doc.xref_set_key(items["3.1 Final Section"], "A", "<</S/URI/URI(https://example.com/)>>")
+    b.save(path)
+    return {
+        "pdf": str(path),
+        "chapters": [
+            {"name": "Foundations of Testing", "page": 1, "col": "left"},
+            {"name": "Chapter Two: The Middle of the Synthetic Book", "page": 3, "col": "full"},
+            {"name": "Closing Chapter", "page": 4, "col": "right"},
+        ],
+        "sections": [
+            {"name": "First Principles", "page": 1, "col": "left"},
+            {"name": "Second Principles of Wrapped Section Headings", "page": 2, "col": "right"},
+            {"name": "Middle Matters", "page": 3, "col": "left"},
+            {"name": "Final Section", "page": 5, "col": "right"},
+        ],
+    }

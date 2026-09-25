@@ -215,8 +215,7 @@ def _validated(prof: Profile, where) -> Profile:
 # mode (the user's section list carries each heading), no script-title or chapter-summary
 # rules (those describe Chen & Chen, not an arbitrary PDF), and a "page" is the 1-based
 # sheet number — PDF page 1 is the first sheet. The engine maps page N to sheet index
-# N + sheet_offset - 1, so that is sheet_offset = 0 (the pdf-splitter docs write
-# "sheet_offset = 1" for the same intent: page 1 = sheet 1).
+# N + sheet_offset - 1, so that is sheet_offset = 0.
 # A book without running sub-headers must not lose a strip under the header band on a
 # column cut, hence subheader_bottom = redact_top (cut_rects' "previous entry's running
 # name" rectangle becomes zero-height).
