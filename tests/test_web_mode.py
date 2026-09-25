@@ -187,5 +187,5 @@ def test_the_package_version_is_the_pyproject_version():
     import monograph_splitter
 
     pyproject = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
-    assert monograph_splitter.__version__ == pyproject["project"]["version"] == "0.4.0"
+    assert monograph_splitter.__version__ == pyproject["project"]["version"] == "0.4.1"
     assert monograph_splitter.ENGINE_VERSION == 17

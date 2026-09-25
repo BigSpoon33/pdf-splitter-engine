@@ -93,3 +93,22 @@ def test_mapping_a_skipped_name_and_refusing_pages_off_the_book(client):
     assert client.post("/api/books/test/entries/Alpha Tang/save", json={"fields": []}).status_code == 400
     assert client.get("/api/books/test/sheets/0.png?dpi=40").headers["content-type"] == "image/png"
     assert client.get("/api/books/test/sheets/999.png").status_code == 404
+
+
+def test_the_excerpt_route_maps_only_the_name_guard_to_404(client, tmp_path):
+    # A name that could leave out/ is refused by the book, and that refusal is the one 404.
+    assert client.get("/api/books/test/excerpts/a%5Cb.pdf").status_code == 404
+    assert client.get("/api/books/test/excerpts/...pdf").status_code == 404
+    assert client.post("/api/books/test/entries/Alpha Tang/save",
+                       json={"pages": [1, 1], "fields": ["pages"]}).status_code == 200
+    assert client.get("/api/books/test/excerpts/Alpha Tang.pdf").status_code == 200
+
+    # A malformed overrides.json is not "no such excerpt": a fresh server whose first request is
+    # the excerpt route must surface the open error, as it did before 0.4.0.
+    (client.out / "overrides.json").write_text('{"Alpha Tang": {"startCut": 12,}')
+    fresh = TestClient(create_app(load_config(tmp_path / "books.json")))
+    with pytest.raises(json.JSONDecodeError):
+        fresh.get("/api/books/test/excerpts/Alpha Tang.pdf")
+    (client.out / "overrides.json").write_text("{}")
+    assert fresh.get("/api/books/test/excerpts/a%5Cb.pdf").status_code == 404
+    assert fresh.get("/api/books/test/excerpts/Alpha Tang.pdf").status_code == 200
