@@ -128,6 +128,13 @@ loader's errors, the entries adapters and the CLI end to end.
   `ocrmypdf` first).
 - Redaction removes what is under the rectangles; it cannot reflow a column, so
   two sub-entries sharing a column on the same line would need a hand override.
+- Redaction and cross-column figures do not mix. A figure, box or table that
+  spans both columns on a redacted first/last page loses the half that sits in
+  the neighbouring column (Maciocia Foundations, *Blood stasis of the
+  Pericardium*: Fig. 33.13's left box is gone, the arrows survive). The text
+  layer is untouched. Not fixed yet — candidates: carve image/drawing bboxes
+  wider than `full_width_ratio` out of the redaction rectangles (accepting the
+  leak), or flag such pages `cross-column-figure` in the review sheet.
 - Two books proven; a differently laid-out book is the real test of generality.
 - The excerpts are copies of copyrighted pages: keep them where the book's
   license lets you keep the book.
