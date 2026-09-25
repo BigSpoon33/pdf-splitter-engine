@@ -15,7 +15,7 @@ book-specific knowledge lives in a TOML *profile*, so another book needs a
 profile, not code.
 
 ```
-uv tool install git+https://git.gumshu.duckdns.org/shuma/monograph-splitter
+uv tool install git+https://github.com/BigSpoon33/pdf-splitter-engine
 monograph-splitter --pdf book.pdf --profile chen-chen-herbology \
     --entries entries.json --out out/ --preview --verify
 ```

@@ -23,7 +23,7 @@ monograph-splitter-diff = "monograph_splitter.diff_manifest:main_entry"
 monograph-splitter-review = "monograph_splitter.review.server:main_entry"
 
 [project.urls]
-Repository = "https://git.gumshu.duckdns.org/shuma/monograph-splitter"
+Repository = "https://github.com/BigSpoon33/pdf-splitter-engine"
 
 [build-system]
 requires = ["hatchling"]
