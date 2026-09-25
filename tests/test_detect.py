@@ -7,7 +7,7 @@ import pytest
 from monograph_splitter import detect
 from monograph_splitter.profile import profile_from_dict
 from monograph_splitter.session import Book
-from tests.fixtures import H, W, headed_book
+from tests.fixtures import H, W, headed_book, single_column_book
 
 
 @pytest.fixture(scope="module")
@@ -17,10 +17,17 @@ def book(tmp_path_factory):
     return d, info, fitz.open(info["pdf"])
 
 
-def _blank(n: int) -> fitz.Document:
+@pytest.fixture(scope="module")
+def single(tmp_path_factory):
+    d = tmp_path_factory.mktemp("single")
+    info = single_column_book(d / "book.pdf")
+    return d, info, fitz.open(info["pdf"])
+
+
+def _blank(n: int, w: float = W, h: float = H) -> fitz.Document:
     doc = fitz.open()
     for _ in range(n):
-        doc.new_page(width=W, height=H)
+        doc.new_page(width=w, height=h)
     return doc
 
 
@@ -73,6 +80,31 @@ def test_outline_headings_lose_only_their_leading_number(title, heading):
     assert detect.outline_entries(doc, 1)[0]["heading"] == heading
 
 
+def test_outline_y_follows_an_indirect_destination_to_the_same_point_as_a_direct_array():
+    doc = _blank(4)
+    doc.set_toc([[1, "Direct", 1], [1, "Indirect action D", 2], [1, "Indirect Dest", 3], [1, "Indirect dict", 4]])
+    items = {it[1]: it[3]["xref"] for it in doc.get_toc(simple=False)}
+    p = [doc[i].xref for i in range(4)]
+    doc.xref_set_key(items["Direct"], "A", f"<</S/GoTo/D[{p[0]} 0 R/XYZ 0 {H - 200:.1f} null]>>")
+    arr = doc.get_new_xref()
+    doc.update_object(arr, f"[{p[1]} 0 R/XYZ 0 {H - 200:.1f} null]")
+    doc.xref_set_key(items["Indirect action D"], "A", f"<</S/GoTo/D {arr} 0 R>>")
+    arr2 = doc.get_new_xref()
+    doc.update_object(arr2, f"[{p[2]} 0 R/FitH {H - 200:.1f}]")
+    doc.xref_set_key(items["Indirect Dest"], "A", "null")
+    doc.xref_set_key(items["Indirect Dest"], "Dest", f"{arr2} 0 R")
+    dct = doc.get_new_xref()                      # a dict holding the array under /D
+    doc.update_object(dct, f"<</D[{p[3]} 0 R/XYZ 0 {H - 200:.1f} null]>>")
+    doc.xref_set_key(items["Indirect dict"], "A", f"<</S/GoTo/D {dct} 0 R>>")
+    assert doc.xref_get_key(items["Indirect action D"], "A/D")[0] == "xref"
+    rows = {r["name"]: r for r in detect.outline_entries(doc, 1)}
+    assert rows["Direct"]["y"] == 200.0
+    assert rows["Indirect action D"]["y"] == 200.0 and rows["Indirect action D"]["page"] == 2
+    assert rows["Indirect Dest"]["y"] == 200.0 and rows["Indirect Dest"]["page"] == 3
+    # PyMuPDF resolves no page for the dict form (get_toc says -1): the row is dropped, not mis-placed
+    assert "Indirect dict" not in rows and detect.outline_levels(doc) == [{"level": 1, "count": 3}]
+
+
 # ── big headings ────────────────────────────────────────────────────────────
 
 def test_body_size_is_the_char_weighted_mode(book):
@@ -109,6 +141,53 @@ def test_wrap_gap_decides_whether_lines_join(book):
     _, _, doc = book
     names = [c["name"] for c in detect.heading_candidates(doc, min_ratio=1.25, wrap_gap=10)["candidates"]]
     assert "Second Principles of Wrapped" in names and "Section Headings" in names
+
+
+WIDE, NARROW = "Differential Diagnosis of the Principal Patterns of Disharmony in", "Clinical Practice"   # 0.65·W / 0.16·W at 13pt
+
+
+@pytest.mark.parametrize("first, second", [(WIDE, NARROW), (NARROW, WIDE)])
+def test_a_wrapped_heading_straddling_the_full_width_threshold_is_one_full_candidate(first, second):
+    doc = _blank(1, 612, 792)
+    pg = doc[0]
+    for i in range(30):
+        pg.insert_text((72, 400 + 12 * i), "single column body prose that runs the full text width of the page", fontsize=10)
+    pg.insert_text((72, 200), first, fontsize=13, fontname="hebo")
+    pg.insert_text((72, 215.6), second, fontsize=13, fontname="hebo")
+    # a same-size line on the OTHER side of column_split inside wrap_gap is not part of the wrap
+    pg.insert_text((330, 231.2), "Right Aside", fontsize=13, fontname="hebo")
+    res = detect.heading_candidates(doc)                              # default two-column geometry
+    assert [(c["name"], c["col"], c["level"]) for c in res["candidates"]] == [
+        (f"{first} {second}", "full", 1), ("Right Aside", "right", 1)]
+
+
+def test_single_column_book_chapters_are_one_candidate_each_under_both_geometries(single):
+    _, info, doc = single
+    prof = profile_from_dict({"single_column": True})
+    for geometry in ({}, {"column_split": prof.column_split, "full_width_ratio": prof.full_width_ratio}):
+        res = detect.heading_candidates(doc, wrap_gap=24, header_band=0, footer_band=0, **geometry)
+        assert res["body_size"] == 10.0
+        lvl1 = [c for c in res["candidates"] if c["level"] == 1]
+        assert [{k: c[k] for k in ("name", "page")} for c in lvl1] == info["chapters"]
+        assert {c["col"] for c in lvl1} == {"full"}                  # each chapter straddles 0.55·W: one line is wide
+        assert [{k: c[k] for k in ("name", "page")} for c in res["candidates"] if c["level"] == 2] == info["sections"]
+        names = [c["name"] for c in detect.heading_candidates(doc, min_ratio=1.0, header_band=0, footer_band=0, **geometry)["candidates"]]
+        assert "The Single Column Reader" not in names and not {"i", "ii", "iii"} & set(names)   # running header, roman folios
+    # the chapter lines are 24pt apart: below that wrap_gap they are two candidates
+    names = [c["name"] for c in detect.heading_candidates(doc, wrap_gap=16)["candidates"]]
+    assert "Identification of Patterns" in names and "according to the Eight Guiding Principles" in names
+
+
+def test_single_column_candidates_open_a_book_and_every_heading_is_located(single):
+    d, info, doc = single
+    rows = detect.heading_candidates(doc, wrap_gap=24)["candidates"]
+    prof = profile_from_dict({"single_column": True, "heading_wrap_gap": 24})
+    b = Book.open(pdf=Path(info["pdf"]), out=d / "cands", profile=prof, entries=rows, log=lambda *_: None)
+    plans = {e.name: b.planned(e) for e in b.entries}
+    ch, sec = info["chapters"], info["sections"]
+    assert list(plans) == [ch[0]["name"], sec[0]["name"], sec[1]["name"], ch[1]["name"]]
+    assert all("heading-not-found" not in p["flags"] for p in plans.values()), plans
+    assert [p["sheet0"] for p in plans.values()] == [0, 0, 1, 2]
 
 
 def test_levels_cluster_sizes_largest_first_within_half_a_point():
@@ -188,15 +267,50 @@ def test_a_header_repeated_on_30_percent_of_pages_is_running_and_below_that_is_n
     assert names(_headered(10, 3)) == []                                    # 30% (digits aside): running
 
 
-@pytest.mark.parametrize("text", ["12", "- 12 -", "xiv", "Page 3", "PAGE 214", "— 7 —"])
-def test_page_number_only_lines_are_never_candidates_anywhere_on_the_page(text):
+def _numbered(text: str, y: float) -> fitz.Document:
     doc = _blank(1)
     pg = doc[0]
     for j in range(20):
         pg.insert_text((50, 400 + 12 * j), "body prose line on the page", fontsize=9.5)
-    pg.insert_text((50, 200), text, fontsize=20)
+    pg.insert_text((50, y), text, fontsize=20)
     pg.insert_text((50, 250), "Page Layout Basics", fontsize=20)
-    assert [c["name"] for c in detect.heading_candidates(doc, header_band=0, footer_band=0)["candidates"]] == ["Page Layout Basics"]
+    return doc
+
+
+def _names(doc: fitz.Document, **kw) -> list[str]:
+    return [c["name"] for c in detect.heading_candidates(doc, header_band=0, footer_band=0, **kw)["candidates"]]
+
+
+@pytest.mark.parametrize("text, y", [
+    ("12", 200), ("- 12 -", 200), ("Page 3", 200), ("PAGE 214", 200), ("— 7 —", 200), ("12", 770),
+    ("xiv", 770), ("XIV", 770), ("- iv -", 770), ("Page iv", 770), ("mcmxcix", 40),
+])
+def test_page_number_lines_are_never_candidates_digits_anywhere_roman_at_the_page_edge(text, y):
+    assert _names(_numbered(text, y)) == ["Page Layout Basics"]
+
+
+@pytest.mark.parametrize("text", ["XIV", "C", "Mix", "iv"])
+def test_a_roman_numeral_mid_page_is_a_heading_not_a_folio(text):
+    assert _names(_numbered(text, 200)) == [text, "Page Layout Basics"]
+
+
+@pytest.mark.parametrize("text", ["Dill", "Mild", "Civil", "Mid", "Mill", "Vivid", "Ill", "IIII", "Fennel"])
+def test_words_spelled_with_roman_letters_are_headings_even_at_the_page_edge(text):
+    # not well-formed numerals: never a folio, even in the footer strip
+    assert _names(_numbered(text, 770)) == ["Page Layout Basics", text]
+
+
+def test_an_a_to_z_glossary_keeps_every_letter():
+    doc = fitz.open()
+    letters = [chr(c) for c in range(ord("A"), ord("Z") + 1)]
+    for L in letters:
+        pg = doc.new_page(width=W, height=H)
+        pg.insert_text((53, 120), L, fontsize=20, fontname="hebo")
+        for i in range(30):
+            pg.insert_text((53, 160 + 12 * i), f"{L.lower()}word {i}: a glossary definition line of body prose", fontsize=9.5)
+    res = detect.heading_candidates(doc)
+    assert [c["name"] for c in res["candidates"]] == letters
+    assert res["levels"] == [{"size": 20.0, "count": 26}]
 
 
 # ── AC-7: pure, one text extraction per page ───────────────────────────────

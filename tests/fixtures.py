@@ -268,3 +268,51 @@ def headed_book(path, outline: bool = True) -> dict:
             {"name": "Final Section", "page": 5, "col": "right"},
         ],
     }
+
+
+def single_column_book(path) -> dict:
+    """A genuinely one-column book (US Letter, 72pt margins) for detection: body 10pt across
+    the full measure, chapter titles 20pt bold wrapped over two lines at 24pt leading,
+    sections 13pt bold, a 14pt running header and a 12.5pt ROMAN folio at the page edges.
+    Under the default two-column geometry each chapter's two lines straddle the full-width
+    threshold (one wider than 0.55·W, the other narrower, same x0); under the
+    `single_column` geometry every candidate is `full`.
+      p1  chapter 1 (a narrow line over a wide one); section 'Full and Empty Patterns'
+      p2  body; section 'Hot and Cold Patterns'
+      p3  chapter 2 (a wide line over a narrow one); body"""
+    b = FakeBook()
+    sw, sh, x, lead = 612.0, 792.0, 72, 24
+
+    def page(folio: str) -> None:
+        b.cur = b.doc.new_page(width=sw, height=sh)
+        b.text(40, "The Single Column Reader", size=14, x=x, font="hebo")
+        b.text(760, folio, size=12.5, x=300, font="hebo")
+
+    def body(y: float, n: int) -> float:
+        for i in range(n):
+            b.text(y + LINE * i, f"single column body prose line {i} that runs the full measure", size=10, x=x)
+        return y + LINE * n
+
+    def chapter(y: float, first: str, second: str) -> float:
+        b.text(y, first, size=20, x=x, font="hebo")
+        return b.text(y + lead, second, size=20, x=x, font="hebo") + 16
+
+    def section(y: float, s: str) -> float:
+        return b.text(y, s, size=13, x=x, font="hebo") + 6
+
+    page("i"); y = chapter(110, "Identification of Patterns", "according to the Eight Guiding Principles")
+    y = body(y, 20); y = section(y + 12, "Full and Empty Patterns"); body(y, 22)
+    page("ii"); y = body(90, 25); y = section(y + 12, "Hot and Cold Patterns"); body(y, 25)
+    page("iii"); y = chapter(110, "Diagnosis by Observation of the Tongue", "and the Pulse"); body(y, 40)
+    b.save(path)
+    return {
+        "pdf": str(path),
+        "chapters": [
+            {"name": "Identification of Patterns according to the Eight Guiding Principles", "page": 1},
+            {"name": "Diagnosis by Observation of the Tongue and the Pulse", "page": 3},
+        ],
+        "sections": [
+            {"name": "Full and Empty Patterns", "page": 1},
+            {"name": "Hot and Cold Patterns", "page": 2},
+        ],
+    }

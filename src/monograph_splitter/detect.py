@@ -22,7 +22,12 @@ from .profile import Profile
 # "1 Introduction", "1.2.3 Scope", "2. Methods", "IV. Results", "iv) Notes" — an outline
 # title carries its number, the heading on the page often does not.
 _LEADING_NUMBER = re.compile(r"^\s*(?:\d+(?:\.\d+)*\.?|[ivxlcdm]+[.)])\s+", re.I)
-_PAGE_NUMBER = re.compile(r"^\W*(?:page\s*)?(?:\d+|[ivxlcdm]+)\W*$", re.I)
+# "12", "- 12 -", "Page 3" are folios wherever they sit; "xiv" only when it is a well-formed
+# numeral AT the page edge — "C", "Mix" and "Dill" mid-page are headings, not folios.
+_DIGIT_PAGE = re.compile(r"^\W*(?:page\s*)?\d+\W*$", re.I)
+_ROMAN_PAGE = re.compile(r"^\W*(?:page\s*)?(?=[ivxlcdm])m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})\W*$", re.I)
+_REF = re.compile(r"^\s*(\d+)\s+\d+\s+R\s*$")                # an indirect object reference, "16 0 R"
+MAX_REF_HOPS = 4          # a destination reference chain in a broken file must not loop forever
 _DEST_TOP = {"XYZ": 1, "FitH": 0, "FitBH": 0, "FitR": 3}   # index of `top` among each view's operands
 RUNNING_SHARE = 0.3       # a line repeated on this share of pages at the page edge is running matter
 EDGE_SHARE = 0.12         # "the page edge" when the caller's bands are narrower than this × H
@@ -36,6 +41,24 @@ def _clean(s: str) -> str:
 
 # ── outline ──────────────────────────────────────────────────────────────────
 
+def _dest_value(doc, xref: int, key: str) -> tuple[str, str]:
+    """`xref_get_key` with indirect destinations followed: `/D 16 0 R` (or `/Dest 16 0 R`)
+    points at the destination array itself, or at a dict that holds it under /D."""
+    for _ in range(MAX_REF_HOPS):
+        kind, value = doc.xref_get_key(xref, key)
+        if kind != "xref":
+            return kind, value
+        m = _REF.match(value)
+        if not m:
+            break
+        xref = int(m.group(1))
+        obj = doc.xref_object(xref, compressed=True).strip()
+        if obj.startswith("["):
+            return "array", obj
+        key = "D"
+    return "null", "null"
+
+
 def _dest_top(doc, item: list, names: dict) -> float | None:
     """The destination's top in page coordinates (y down), or None when the file names
     no point. PyMuPDF reports /Fit and `/XYZ null null` as (0, 0) and a named
@@ -44,7 +67,7 @@ def _dest_top(doc, item: list, names: dict) -> float | None:
     xref = dest.get("xref", 0)
     raw = None
     for key in ("A/D", "Dest"):
-        kind, value = doc.xref_get_key(xref, key) if xref else ("null", "null")
+        kind, value = _dest_value(doc, xref, key) if xref else ("null", "null")
         if kind == "array":
             raw = value
             break
@@ -131,23 +154,33 @@ def _running_key(ln: Line) -> tuple[str, float]:
     return re.sub(r"\d+", "#", _clean(ln[4]).lower()), round(ln[5] * 2) / 2
 
 
+def _at_edge(ln: Line, h: float, header_band: float, footer_band: float) -> bool:
+    """In the page-edge strip, at least EDGE_SHARE × H deep at either end, so a band
+    set too thin still covers the running matter and the folios."""
+    return ln[0] < max(header_band, EDGE_SHARE * h) or ln[0] >= h - max(footer_band, EDGE_SHARE * h)
+
+
 def _running(sheets: list[tuple[float, list[Line]]], header_band: float, footer_band: float) -> set:
-    """Lines repeated (digits aside) at the top or bottom edge of ≥ RUNNING_SHARE of the
-    pages: running headers and footers. The edge is at least EDGE_SHARE × H deep, so a
-    band set too thin still catches them; the key includes the size, so a chapter title
-    set big at the top of its first page is not its own small running header."""
+    """Lines repeated (digits aside) at the page edge of ≥ RUNNING_SHARE of the pages:
+    running headers and footers. The key includes the size, so a chapter title set big
+    at the top of its first page is not its own small running header."""
     seen: Counter = Counter()
     for h, lines in sheets:
-        top, bottom = max(header_band, EDGE_SHARE * h), h - max(footer_band, EDGE_SHARE * h)
-        seen.update({_running_key(ln) for ln in lines if ln[0] < top or ln[0] >= bottom})
+        seen.update({_running_key(ln) for ln in lines if _at_edge(ln, h, header_band, footer_band)})
     need = max(2, math.ceil(RUNNING_SHARE * len(sheets)))
     return {k for k, n in seen.items() if n >= need}
 
 
-def _col(x0: float, x1: float, w: float, column_split: float, full_width_ratio: float) -> str:
-    if x1 - x0 > full_width_ratio * w:
-        return "full"
-    return "left" if x0 < column_split * w else "right"
+def _page_number(ln: Line, h: float, header_band: float, footer_band: float) -> bool:
+    return bool(_DIGIT_PAGE.match(ln[4])) or (bool(_ROMAN_PAGE.match(ln[4])) and _at_edge(ln, h, header_band, footer_band))
+
+
+def _full(ln: Line, w: float, full_width_ratio: float) -> bool:
+    return ln[3] - ln[2] > full_width_ratio * w
+
+
+def _side(ln: Line, w: float, column_split: float) -> str:
+    return "left" if ln[2] < column_split * w else "right"
 
 
 def _reading_order(cands: list[dict]) -> list[dict]:
@@ -164,12 +197,13 @@ def heading_candidates(doc, *, min_ratio: float = 1.3, max_len: int = 90,
                        full_width_ratio: float = Profile.full_width_ratio) -> dict:
     """Lines set at ≥ body × min_ratio, outside the header/footer bands, as section
     proposals: {body_size, levels: [{size, count}], candidates: [{name, page, heading,
-    size, level, y, col}]}. A heading wrapped over up to three lines (same column,
-    tops within wrap_gap, sizes within LEVEL_TOLERANCE) is one candidate; the joined
-    text must be ≤ max_len chars. Running headers/footers and page-number-only lines
-    never count. Levels cluster the candidates' sizes, largest = 1. Pass the web
-    settings' geometry (`single_column` → column_split 0.999, full_width_ratio 0) so
-    `col` agrees with the cuts."""
+    size, level, y, col}]}. A heading wrapped over up to three lines (starting on the
+    same side of column_split — locate_heading's grouping, so a line that crosses the
+    gutter still joins the narrower line under it — tops within wrap_gap, sizes within
+    LEVEL_TOLERANCE) is one candidate; the joined text must be ≤ max_len chars. Running
+    headers/footers and page-number lines never count. Levels cluster the candidates'
+    sizes, largest = 1. Pass the web settings' geometry (`single_column` →
+    column_split 0.999, full_width_ratio 0) so `col` agrees with the cuts."""
     sheets: list[tuple[float, float, list[Line]]] = []
     for page in doc:
         sheets.append((page.rect.width, page.rect.height, page_lines(page)))
@@ -183,12 +217,12 @@ def heading_candidates(doc, *, min_ratio: float = 1.3, max_len: int = 90,
     for sheet, (w, h, lines) in enumerate(sheets):
         big = [ln for ln in lines
                if ln[5] >= floor and header_band <= ln[0] < h - footer_band
-               and not _PAGE_NUMBER.match(ln[4]) and _running_key(ln) not in running]
+               and not _page_number(ln, h, header_band, footer_band) and _running_key(ln) not in running]
         open_: list[list[Line]] = []
         for ln in big:
-            col = _col(ln[2], ln[3], w, column_split, full_width_ratio)
+            side = _side(ln, w, column_split)
             host = next((g for g in reversed(open_)
-                         if _col(g[-1][2], g[-1][3], w, column_split, full_width_ratio) == col
+                         if _side(g[0], w, column_split) == side
                          and ln[0] - g[-1][0] <= wrap_gap and abs(ln[5] - g[0][5]) <= LEVEL_TOLERANCE), None)
             if host is not None:
                 host.append(ln)
@@ -201,9 +235,9 @@ def heading_candidates(doc, *, min_ratio: float = 1.3, max_len: int = 90,
         text = _clean(" ".join(ln[4] for ln in g))
         if len(g) > MAX_WRAP_LINES or len(text) > max_len:
             continue
-        x0, x1 = min(ln[2] for ln in g), max(ln[3] for ln in g)
+        col = "full" if any(_full(ln, w, full_width_ratio) for ln in g) else _side(g[0], w, column_split)
         cands.append({"name": text, "page": sheet + 1, "heading": text, "size": round(max(ln[5] for ln in g), 2),
-                      "y": round(g[0][0], 1), "col": _col(x0, x1, w, column_split, full_width_ratio)})
+                      "y": round(g[0][0], 1), "col": col})
 
     tops: list[float] = []            # each level's largest size
     for s in sorted({c["size"] for c in cands}, reverse=True):
