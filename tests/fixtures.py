@@ -273,7 +273,7 @@ def headed_book(path, outline: bool = True) -> dict:
 def single_column_book(path) -> dict:
     """A genuinely one-column book (US Letter, 72pt margins) for detection: body 10pt across
     the full measure, chapter titles 20pt bold wrapped over two lines at 24pt leading,
-    sections 13pt bold, a 14pt running header and a 12.5pt ROMAN folio at the page edges.
+    sections 13pt bold, a 14pt running header and a 12.5pt ROMAN folio inside the default bands.
     Under the default two-column geometry each chapter's two lines straddle the full-width
     threshold (one wider than 0.55·W, the other narrower, same x0); under the
     `single_column` geometry every candidate is `full`.
@@ -286,7 +286,7 @@ def single_column_book(path) -> dict:
     def page(folio: str) -> None:
         b.cur = b.doc.new_page(width=sw, height=sh)
         b.text(40, "The Single Column Reader", size=14, x=x, font="hebo")
-        b.text(760, folio, size=12.5, x=300, font="hebo")
+        b.text(778, folio, size=12.5, x=300, font="hebo")
 
     def body(y: float, n: int) -> float:
         for i in range(n):

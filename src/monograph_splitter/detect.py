@@ -22,15 +22,15 @@ from .profile import Profile
 # "1 Introduction", "1.2.3 Scope", "2. Methods", "IV. Results", "iv) Notes" — an outline
 # title carries its number, the heading on the page often does not.
 _LEADING_NUMBER = re.compile(r"^\s*(?:\d+(?:\.\d+)*\.?|[ivxlcdm]+[.)])\s+", re.I)
-# "12", "- 12 -", "Page 3" are folios wherever they sit; "xiv" only when it is a well-formed
-# numeral AT the page edge — "C", "Mix" and "Dill" mid-page are headings, not folios.
+# "12", "- 12 -", "Page 3" are folios wherever they sit. A roman numeral ("xiv") is a folio
+# only at the page edge, and the page edge is the caller's header/footer band — which drops
+# every line inside it anyway — so "C", "Mix", "Dill" and "Lesson 3" opening a page need no
+# rule of their own.
 _DIGIT_PAGE = re.compile(r"^\W*(?:page\s*)?\d+\W*$", re.I)
-_ROMAN_PAGE = re.compile(r"^\W*(?:page\s*)?(?=[ivxlcdm])m{0,3}(?:cm|cd|d?c{0,3})(?:xc|xl|l?x{0,3})(?:ix|iv|v?i{0,3})\W*$", re.I)
 _REF = re.compile(r"^\s*(\d+)\s+\d+\s+R\s*$")                # an indirect object reference, "16 0 R"
 MAX_REF_HOPS = 4          # a destination reference chain in a broken file must not loop forever
 _DEST_TOP = {"XYZ": 1, "FitH": 0, "FitBH": 0, "FitR": 3}   # index of `top` among each view's operands
-RUNNING_SHARE = 0.3       # a line repeated on this share of pages at the page edge is running matter
-EDGE_SHARE = 0.12         # "the page edge" when the caller's bands are narrower than this × H
+RUNNING_SHARE = 0.3       # a line repeated verbatim on this share of pages is furniture, not a section start
 LEVEL_TOLERANCE = 0.5     # sizes within this many points are one heading level
 MAX_WRAP_LINES = 3        # locate_heading joins at most three lines; a bigger block is display prose
 
@@ -151,28 +151,21 @@ def body_size(sheets: list[list[Line]]) -> float:
 
 
 def _running_key(ln: Line) -> tuple[str, float]:
-    return re.sub(r"\d+", "#", _clean(ln[4]).lower()), round(ln[5] * 2) / 2
+    # digits are NOT masked: "Lesson 1" … "Lesson 10" opening every third page are ten
+    # headings, while a "Chapter 3 · Title  45" running header lives inside the band
+    return _clean(ln[4]).lower(), round(ln[5] * 2) / 2
 
 
-def _at_edge(ln: Line, h: float, header_band: float, footer_band: float) -> bool:
-    """In the page-edge strip, at least EDGE_SHARE × H deep at either end, so a band
-    set too thin still covers the running matter and the folios."""
-    return ln[0] < max(header_band, EDGE_SHARE * h) or ln[0] >= h - max(footer_band, EDGE_SHARE * h)
-
-
-def _running(sheets: list[tuple[float, list[Line]]], header_band: float, footer_band: float) -> set:
-    """Lines repeated (digits aside) at the page edge of ≥ RUNNING_SHARE of the pages:
-    running headers and footers. The key includes the size, so a chapter title set big
-    at the top of its first page is not its own small running header."""
+def _running(sheets: list[list[Line]]) -> set:
+    """Lines repeated verbatim, anywhere on the page, on ≥ RUNNING_SHARE of the pages:
+    running headers and footers, excluded even when the caller's bands are 0. The key
+    includes the size, so a chapter title set big at the top of its first page is not
+    its own small running header."""
     seen: Counter = Counter()
-    for h, lines in sheets:
-        seen.update({_running_key(ln) for ln in lines if _at_edge(ln, h, header_band, footer_band)})
+    for lines in sheets:
+        seen.update({_running_key(ln) for ln in lines})
     need = max(2, math.ceil(RUNNING_SHARE * len(sheets)))
     return {k for k, n in seen.items() if n >= need}
-
-
-def _page_number(ln: Line, h: float, header_band: float, footer_band: float) -> bool:
-    return bool(_DIGIT_PAGE.match(ln[4])) or (bool(_ROMAN_PAGE.match(ln[4])) and _at_edge(ln, h, header_band, footer_band))
 
 
 def _full(ln: Line, w: float, full_width_ratio: float) -> bool:
@@ -200,9 +193,11 @@ def heading_candidates(doc, *, min_ratio: float = 1.3, max_len: int = 90,
     size, level, y, col}]}. A heading wrapped over up to three lines (starting on the
     same side of column_split — locate_heading's grouping, so a line that crosses the
     gutter still joins the narrower line under it — tops within wrap_gap, sizes within
-    LEVEL_TOLERANCE) is one candidate; the joined text must be ≤ max_len chars. Running
-    headers/footers and page-number lines never count. Levels cluster the candidates'
-    sizes, largest = 1. Pass the web settings' geometry (`single_column` →
+    LEVEL_TOLERANCE) is one candidate; the joined text must be ≤ max_len chars. The bands
+    are the only page edge: a line inside them never counts, and one outside them is never
+    second-guessed by its position. A line repeated verbatim on ≥ RUNNING_SHARE of the
+    pages (a running header) and a digit-only folio never count anywhere. Levels cluster
+    the candidates' sizes, largest = 1. Pass the web settings' geometry (`single_column` →
     column_split 0.999, full_width_ratio 0) so `col` agrees with the cuts."""
     sheets: list[tuple[float, float, list[Line]]] = []
     for page in doc:
@@ -210,14 +205,14 @@ def heading_candidates(doc, *, min_ratio: float = 1.3, max_len: int = 90,
     body = body_size([lines for _, _, lines in sheets])
     if body <= 0:
         return {"body_size": 0.0, "levels": [], "candidates": []}
-    running = _running([(h, lines) for _, h, lines in sheets], header_band, footer_band)
+    running = _running([lines for _, _, lines in sheets])
     floor = body * min_ratio
 
     groups: list[tuple[int, float, list[Line]]] = []
     for sheet, (w, h, lines) in enumerate(sheets):
         big = [ln for ln in lines
                if ln[5] >= floor and header_band <= ln[0] < h - footer_band
-               and not _page_number(ln, h, header_band, footer_band) and _running_key(ln) not in running]
+               and not _DIGIT_PAGE.match(ln[4]) and _running_key(ln) not in running]
         open_: list[list[Line]] = []
         for ln in big:
             side = _side(ln, w, column_split)

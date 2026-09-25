@@ -224,8 +224,10 @@ detect.heading_candidates(doc, min_ratio=1.3, max_len=90, header_band=50, footer
   line (or up to three wrapped lines, tops within `wrap_gap`, starting on the same side of
   `column_split` — a line that crosses the gutter still joins the narrower line under it)
   at ≥ `body × min_ratio`, outside the header/footer bands, ≤ `max_len` characters joined.
-  Running headers/footers (the same text, digits aside, at the page edge of ≥ 30% of pages)
-  and folios (`12`, `- 12 -`, `Page 3` anywhere; a roman numeral such as `xiv` only at the
-  page edge, so a heading "C" or "Mix" survives) never count. Sizes within 0.5 pt share a `level` (largest = 1); `col` is
+  The bands are the only page edge: whatever sits inside them (folios, running headers,
+  `xiv`) is out, and nothing outside them is second-guessed by its position, so a page-opening
+  "C", "Mix" or "Lesson 3" survives. A line repeated verbatim at one size on ≥ 30% of pages
+  (a running header, even with bands of 0) and digit folios (`12`, `- 12 -`, `Page 3`,
+  anywhere) never count. Sizes within 0.5 pt share a `level` (largest = 1); `col` is
   `left`/`right`/`full` by the column geometry passed in (use the web settings' profile
   values so it agrees with the cuts).

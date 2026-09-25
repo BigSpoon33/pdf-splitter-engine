@@ -5,7 +5,7 @@ import fitz
 import pytest
 
 from monograph_splitter import detect
-from monograph_splitter.profile import profile_from_dict
+from monograph_splitter.profile import Profile, profile_from_dict
 from monograph_splitter.session import Book
 from tests.fixtures import H, W, headed_book, single_column_book
 
@@ -171,8 +171,12 @@ def test_single_column_book_chapters_are_one_candidate_each_under_both_geometrie
         assert [{k: c[k] for k in ("name", "page")} for c in lvl1] == info["chapters"]
         assert {c["col"] for c in lvl1} == {"full"}                  # each chapter straddles 0.55·W: one line is wide
         assert [{k: c[k] for k in ("name", "page")} for c in res["candidates"] if c["level"] == 2] == info["sections"]
-        names = [c["name"] for c in detect.heading_candidates(doc, min_ratio=1.0, header_band=0, footer_band=0, **geometry)["candidates"]]
-        assert "The Single Column Reader" not in names and not {"i", "ii", "iii"} & set(names)   # running header, roman folios
+        # the verbatim running header is furniture under any bands; the roman folios are folios
+        # only inside the footer band — with no bands there is no page edge and they stay
+        loose = [c["name"] for c in detect.heading_candidates(doc, min_ratio=1.0, header_band=0, footer_band=0, **geometry)["candidates"]]
+        assert "The Single Column Reader" not in loose and {"i", "ii", "iii"} <= set(loose)
+        tight = [c["name"] for c in detect.heading_candidates(doc, min_ratio=1.0, **geometry)["candidates"]]
+        assert "The Single Column Reader" not in tight and not {"i", "ii", "iii"} & set(tight)
     # the chapter lines are 24pt apart: below that wrap_gap they are two candidates
     names = [c["name"] for c in detect.heading_candidates(doc, wrap_gap=16)["candidates"]]
     assert "Identification of Patterns" in names and "according to the Eight Guiding Principles" in names
@@ -251,20 +255,54 @@ def test_running_headers_and_page_numbers_are_never_candidates_even_with_no_band
         assert not any(n.isdigit() for n in names)                   # 12.5pt page numbers
 
 
-def _headered(n_pages: int, n_headed: int) -> fitz.Document:
+DEFAULT_BANDS = {"header_band": Profile.header_band, "footer_band": Profile.footer_band}   # 50 / 32
+
+
+def _headered(n_pages: int, n_headed: int, numbered: bool = True) -> fitz.Document:
+    """A 16pt line at baseline 40 (top ≈ 23, inside the default header band) on the first
+    n_headed pages: 'Rare Header 1', 'Rare Header 2', … or the same 'Rare Header' verbatim."""
     doc = _blank(n_pages)
     for i, pg in enumerate(doc):
         for j in range(20):
             pg.insert_text((50, 200 + 12 * j), "body prose line for the running header test", fontsize=9.5)
         if i < n_headed:
-            pg.insert_text((50, 40), f"Rare Header {i + 1}", fontsize=16)
+            pg.insert_text((50, 40), f"Rare Header {i + 1}" if numbered else "Rare Header", fontsize=16)
     return doc
 
 
-def test_a_header_repeated_on_30_percent_of_pages_is_running_and_below_that_is_not():
-    names = lambda doc: [c["name"] for c in detect.heading_candidates(doc, header_band=0)["candidates"]]
-    assert names(_headered(10, 2)) == ["Rare Header 1", "Rare Header 2"]    # 20%: two real headings
-    assert names(_headered(10, 3)) == []                                    # 30% (digits aside): running
+def _names(doc: fitz.Document, **kw) -> list[str]:
+    """Candidate names with no bands (so no page edge at all) unless the call sets some."""
+    return [c["name"] for c in detect.heading_candidates(doc, **{"header_band": 0, "footer_band": 0, **kw})["candidates"]]
+
+
+def test_a_line_repeated_verbatim_on_30_percent_of_pages_is_running_even_with_no_bands():
+    assert _names(_headered(10, 2, numbered=False)) == ["Rare Header", "Rare Header"]   # 20%: two real headings
+    assert _names(_headered(10, 3, numbered=False)) == []                               # 30%: furniture, wherever it sits
+
+
+def test_numbered_lines_are_not_a_running_header_only_the_callers_band_drops_them():
+    doc = _headered(10, 3)
+    assert _names(doc) == ["Rare Header 1", "Rare Header 2", "Rare Header 3"]      # digits are not masked
+    assert _names(doc, **DEFAULT_BANDS) == []                                       # inside the header band: the edge
+
+
+def test_a_workbook_of_numbered_lessons_opening_every_third_page_keeps_every_lesson():
+    doc = _blank(30, 612, 792)
+    for k in range(10):
+        for p in range(3):
+            pg = doc[3 * k + p]
+            pg.insert_text((72, 40), "Practical Workbook", fontsize=9)
+            y = 110
+            if p == 0:
+                pg.insert_text((72, 90), f"Lesson {k + 1}", fontsize=20, fontname="hebo")   # top ≈ 68.6: page-opening, below the band
+                y = 120
+            for i in range(45):
+                if y + 12 * i > 740:
+                    break
+                pg.insert_text((72, y + 12 * i), f"body prose line {i} of lesson {k + 1} that runs the full measure", fontsize=10)
+    res = detect.heading_candidates(doc)
+    assert [c["name"] for c in res["candidates"]] == [f"Lesson {k}" for k in range(1, 11)]
+    assert res["levels"] == [{"size": 20.0, "count": 10}]
 
 
 def _numbered(text: str, y: float) -> fitz.Document:
@@ -277,16 +315,22 @@ def _numbered(text: str, y: float) -> fitz.Document:
     return doc
 
 
-def _names(doc: fitz.Document, **kw) -> list[str]:
-    return [c["name"] for c in detect.heading_candidates(doc, header_band=0, footer_band=0, **kw)["candidates"]]
-
-
 @pytest.mark.parametrize("text, y", [
-    ("12", 200), ("- 12 -", 200), ("Page 3", 200), ("PAGE 214", 200), ("— 7 —", 200), ("12", 770),
-    ("xiv", 770), ("XIV", 770), ("- iv -", 770), ("Page iv", 770), ("mcmxcix", 40),
+    ("12", 200), ("- 12 -", 200), ("Page 3", 200), ("PAGE 214", 200), ("— 7 —", 200), ("12", 782),
 ])
-def test_page_number_lines_are_never_candidates_digits_anywhere_roman_at_the_page_edge(text, y):
+def test_digit_page_numbers_are_never_candidates_anywhere_even_with_no_bands(text, y):
     assert _names(_numbered(text, y)) == ["Page Layout Basics"]
+
+
+@pytest.mark.parametrize("text, y", [("xiv", 782), ("XIV", 782), ("- iv -", 782), ("Page iv", 782), ("mcmxcix", 40)])
+def test_roman_folios_inside_the_default_bands_are_never_candidates(text, y):
+    # 20pt at baseline 782 has its top ≈ 760.6, inside H − 32; at baseline 40 the top ≈ 18.6, inside 50
+    assert _names(_numbered(text, y), **DEFAULT_BANDS) == ["Page Layout Basics"]
+
+
+def test_a_roman_numeral_is_a_folio_only_inside_the_callers_bands():
+    # the bands are the only page edge: with none, "xiv" at the foot of the page is a heading
+    assert _names(_numbered("xiv", 782)) == ["Page Layout Basics", "xiv"]
 
 
 @pytest.mark.parametrize("text", ["XIV", "C", "Mix", "iv"])
@@ -295,17 +339,16 @@ def test_a_roman_numeral_mid_page_is_a_heading_not_a_folio(text):
 
 
 @pytest.mark.parametrize("text", ["Dill", "Mild", "Civil", "Mid", "Mill", "Vivid", "Ill", "IIII", "Fennel"])
-def test_words_spelled_with_roman_letters_are_headings_even_at_the_page_edge(text):
-    # not well-formed numerals: never a folio, even in the footer strip
+def test_words_spelled_with_roman_letters_are_headings_wherever_they_sit(text):
     assert _names(_numbered(text, 770)) == ["Page Layout Basics", text]
 
 
-def test_an_a_to_z_glossary_keeps_every_letter():
+def test_an_a_to_z_glossary_of_page_opening_letters_keeps_every_letter():
     doc = fitz.open()
     letters = [chr(c) for c in range(ord("A"), ord("Z") + 1)]
     for L in letters:
         pg = doc.new_page(width=W, height=H)
-        pg.insert_text((53, 120), L, fontsize=20, fontname="hebo")
+        pg.insert_text((53, 90), L, fontsize=20, fontname="hebo")           # top ≈ 68.6: C, D, I, L, M, V, X open their page
         for i in range(30):
             pg.insert_text((53, 160 + 12 * i), f"{L.lower()}word {i}: a glossary definition line of body prose", fontsize=9.5)
     res = detect.heading_candidates(doc)
