@@ -52,7 +52,12 @@ def _dest_value(doc, xref: int, key: str) -> tuple[str, str]:
         if not m:
             break
         xref = int(m.group(1))
-        obj = doc.xref_object(xref, compressed=True).strip()
+        if not 1 <= xref < doc.xref_length():
+            break         # dangling: treat the key as absent so the next key (/Dest) still counts
+        try:
+            obj = doc.xref_object(xref, compressed=True).strip()
+        except RuntimeError:
+            break
         if obj.startswith("["):
             return "array", obj
         key = "D"
@@ -127,7 +132,10 @@ def outline_entries(doc, level: int) -> list[dict]:
             continue
         name = _clean(it[1])
         row = {"name": name, "page": it[2], "heading": _LEADING_NUMBER.sub("", name) or name, "level": level}
-        y = _dest_top(doc, it, names)
+        try:
+            y = _dest_top(doc, it, names)
+        except (RuntimeError, ValueError, IndexError):
+            y = None      # one broken destination costs that item its y, never the level
         if y is not None:
             row["y"] = y
         rows.append(row)

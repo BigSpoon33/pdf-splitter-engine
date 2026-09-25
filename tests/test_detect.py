@@ -105,6 +105,50 @@ def test_outline_y_follows_an_indirect_destination_to_the_same_point_as_a_direct
     assert "Indirect dict" not in rows and detect.outline_levels(doc) == [{"level": 1, "count": 3}]
 
 
+
+def _dangling(a_dest: str, dest: str | None):
+    doc = _blank(2)
+    doc.set_toc([[1, "Intro", 1], [1, "Chapter Two", 2]])
+    x = {it[1]: it[3]["xref"] for it in doc.get_toc(simple=False)}["Chapter Two"]
+    doc.xref_set_key(x, "A", "null")
+    if dest is not None:
+        doc.xref_set_key(x, "Dest", dest.format(page=doc[1].xref))
+    doc.xref_set_key(x, "A", f"<</S/GoTo/D {a_dest.format(past_end=doc.xref_length() + 100)} 0 R>>")
+    return fitz.open("pdf", doc.tobytes())
+
+
+@pytest.mark.parametrize("a_dest", ["{past_end}", "0"])
+def test_a_dangling_action_reference_falls_through_to_dest(a_dest):
+    doc = _dangling(a_dest, f"[{{page}} 0 R/XYZ 0 {H - 200:.1f} null]")
+    rows = {r["name"]: r for r in detect.outline_entries(doc, 1)}
+    assert set(rows) == {"Intro", "Chapter Two"} and detect.outline_levels(doc) == [{"level": 1, "count": 2}]
+    assert rows["Chapter Two"]["page"] == 2 and rows["Chapter Two"]["y"] == 200.0
+
+
+def test_a_dangling_reference_without_a_point_to_fall_back_on_keeps_the_row_without_y():
+    doc = _dangling("{past_end}", "[{page} 0 R/Fit]")
+    rows = {r["name"]: r for r in detect.outline_entries(doc, 1)}
+    assert rows["Chapter Two"]["page"] == 2 and "y" not in rows["Chapter Two"]
+    # with no /Dest at all MuPDF resolves no page (-1): the row is dropped upstream, the level survives
+    doc = _dangling("{past_end}", None)
+    assert [r["name"] for r in detect.outline_entries(doc, 1)] == ["Intro"]
+
+
+def test_one_item_failing_to_resolve_costs_only_its_y(book, monkeypatch):
+    _, info, doc = book
+    real = detect._dest_top
+    first = detect.outline_entries(doc, 1)[0]["name"]
+
+    def flaky(d, item, names):
+        if detect._clean(item[1]) == first:
+            raise RuntimeError("bad xref")
+        return real(d, item, names)
+
+    monkeypatch.setattr(detect, "_dest_top", flaky)
+    rows = detect.outline_entries(doc, 1)
+    assert rows[0]["name"] == first and "y" not in rows[0] and rows[0]["page"] >= 1
+    assert len(rows) == next(c["count"] for c in detect.outline_levels(doc) if c["level"] == 1)
+
 # ── big headings ────────────────────────────────────────────────────────────
 
 def test_body_size_is_the_char_weighted_mode(book):
