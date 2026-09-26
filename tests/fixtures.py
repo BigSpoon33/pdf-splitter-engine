@@ -190,3 +190,165 @@ def heading_book(path) -> dict:
             {"name": "Zeta Pattern", "page": 7, "heading": "Zeta Pattern"},
         ],
     }
+
+
+W2, H2 = 700.0, 600.0
+RIGHT2 = 380      # the right column of the wider sheet: past ITS gutter (0.487 × 700 ≈ 341), not the narrow sheet's
+
+
+def mixed_size_book(path) -> dict:
+    """A headings-mode book whose sheets differ in size (printed page = sheet + 1 under
+    tests/profile-headings.toml):
+      p1  522.72 × 789.6 — Alpha Pattern at the top of the left column; body in both columns
+      p2  700 × 600     — left: Alpha's tail in lines long enough to cross the NARROW sheet's
+                          gutter (≈ 255 pt) but not this sheet's (≈ 341 pt); right (x = 380):
+                          Beta Pattern at the top of the column, then Beta's body running past
+                          the narrow sheet's right edge (522.72)
+    So Alpha's end cut is a right-column cut on the wide sheet: computed in the narrow sheet's
+    geometry it would clip Alpha's own tail and leave Beta's overflow; in the wide sheet's it
+    removes exactly Beta's column."""
+    b = FakeBook()
+    b.page(1); y = b.pattern(60, "Alpha Pattern"); b.body(y, 20, prefix="alpha body"); b.body(80, 20, "right", prefix="alpha right")
+    b.cur = b.doc.new_page(width=W2, height=H2)
+    b.text(35, "Chapter 1 - Test Formulas", size=9, x=54)
+    b.text(590, "2", size=8, x=54)                                     # the folio, inside the wide sheet's footer band
+    for i in range(12):
+        b.text(80 + LINE * i, f"alpha tail {i} of the running prose that reaches across the narrow gutter", x=LEFT)
+    b.text(80, "Beta Pattern", size=12.5, x=RIGHT2, font="hebo")
+    b.text(100, "Clinical manifestations", size=12, x=RIGHT2, font="hebo")
+    for i in range(20):
+        b.text(116 + LINE * i, f"beta body {i} of the running prose past the narrow edge", x=RIGHT2)
+    b.save(path)
+    return {
+        "pdf": str(path),
+        "entries": [
+            {"name": "Alpha Pattern", "page": 1, "heading": "Alpha Pattern"},
+            {"name": "Beta Pattern", "page": 2, "heading": "Beta Pattern"},
+        ],
+    }
+
+
+def headed_book(path, outline: bool = True) -> dict:
+    """A generic two-column book for detection (web mode: page = 1-based sheet): body 9.5pt,
+    chapters 16pt bold, sections 12pt bold, a 14pt running header on every page (inside the
+    header band) and a 12.5pt page number in the footer band — both big enough to pass for
+    headings if the bands were off.
+      p1  Chapter 1 at the top of the left column; section 'First Principles' mid-left
+      p2  section wrapped over two lines in the right column (14pt leading)
+      p3  Chapter 2 full-width at the top; section 'Middle Matters' in the left column
+      p4  left column all body; Chapter 3 starts MID-RIGHT-COLUMN
+      p5  section 'Final Section' at the top of the right column
+      p6  body only (the book ends there)
+    The outline (set_toc, then raw destinations rewritten): chapters at level 1 and
+    sections at level 2 with leading numbers; '1 Foundations of Testing' and
+    '2 Chapter Two …' carry a point, '1.1' is /Fit and '1.2' /XYZ null null (no point),
+    '3 Closing Chapter' a named destination with a point, '3.1' a URI (page -1)."""
+    b = FakeBook()
+    running = "The Synthetic Handbook"
+
+    def page(n: int) -> None:
+        b.cur = b.doc.new_page(width=W, height=H)
+        b.text(35, running, size=14, x=54, font="hebo")
+        b.text(775, str(n), size=12.5, x=255, font="hebo")
+
+    def body(y: float, n: int, col: str = "left", prefix: str = "body") -> float:
+        x = LEFT if col == "left" else RIGHT
+        for i in range(n):
+            b.text(y + LINE * i, f"{prefix} {i} of the running prose", size=9.5, x=x)
+        return y + LINE * n
+
+    def head(y: float, s: str, size: float, col: str = "left") -> float:
+        return b.text(y, s, size=size, x=LEFT if col == "left" else RIGHT, font="hebo") + 8
+
+    page(1); y = head(90, "Foundations of Testing", 16); y = body(y, 20); y = head(y + 10, "First Principles", 12)
+    body(y, 25); body(80, 55, "right")
+    page(2); body(80, 55); y = body(80, 20, "right"); y = head(y + 12, "Second Principles of Wrapped", 12, "right")
+    y = head(y - 8 + 14 - LINE, "Section Headings", 12, "right"); body(y, 25, "right")
+    page(3); y = head(90, "Chapter Two: The Middle of the Synthetic Book", 16); y = body(y + 4, 20)
+    y = head(y + 10, "Middle Matters", 12); body(y, 22); body(122, 50, "right")
+    page(4); body(80, 55); y = body(80, 25, "right"); y = head(y + 20, "Closing Chapter", 16, "right"); body(y, 25, "right")
+    page(5); body(80, 55); y = head(90, "Final Section", 12, "right"); body(y, 50, "right")
+    page(6); body(80, 55); body(80, 55, "right")
+    if outline:
+        b.doc.set_toc([
+            [1, "1 Foundations of Testing", 1, {"kind": fitz.LINK_GOTO, "to": fitz.Point(0, 70), "page": 0}],
+            [2, "1.1 First Principles", 1],
+            [2, "1.2 Second Principles of Wrapped Section Headings", 2],
+            [1, "2 Chapter Two: The Middle of the Synthetic Book", 3],
+            [2, "2.1 Middle Matters", 3],
+            [1, "3 Closing Chapter", 4],
+            [2, "3.1 Final Section", 5],
+        ])
+        items = {it[1]: it[3]["xref"] for it in b.doc.get_toc(simple=False)}
+        p2, p4 = b.doc[1].xref, b.doc[3].xref
+        b.doc.xref_set_key(items["1.1 First Principles"], "A", f"<</S/GoTo/D[{b.doc[0].xref} 0 R/Fit]>>")
+        b.doc.xref_set_key(items["1.2 Second Principles of Wrapped Section Headings"], "A",
+                           f"<</S/GoTo/D[{p2} 0 R/XYZ null null null]>>")
+        names = b.doc.get_new_xref()
+        b.doc.update_object(names, f"<</Names[(ch3)[{p4} 0 R/XYZ 0 {H - 400:.1f} null]]>>")
+        b.doc.xref_set_key(b.doc.pdf_catalog(), "Names", f"<</Dests {names} 0 R>>")
+        b.doc.xref_set_key(items["3 Closing Chapter"], "A", "<</S/GoTo/D(ch3)>>")
+        b.doc.xref_set_key(items["3.1 Final Section"], "A", "<</S/URI/URI(https://example.com/)>>")
+    b.save(path)
+    return {
+        "pdf": str(path),
+        "chapters": [
+            {"name": "Foundations of Testing", "page": 1, "col": "left"},
+            {"name": "Chapter Two: The Middle of the Synthetic Book", "page": 3, "col": "full"},
+            {"name": "Closing Chapter", "page": 4, "col": "right"},
+        ],
+        "sections": [
+            {"name": "First Principles", "page": 1, "col": "left"},
+            {"name": "Second Principles of Wrapped Section Headings", "page": 2, "col": "right"},
+            {"name": "Middle Matters", "page": 3, "col": "left"},
+            {"name": "Final Section", "page": 5, "col": "right"},
+        ],
+    }
+
+
+def single_column_book(path) -> dict:
+    """A genuinely one-column book (US Letter, 72pt margins) for detection: body 10pt across
+    the full measure, chapter titles 20pt bold wrapped over two lines at 24pt leading,
+    sections 13pt bold, a 14pt running header and a 12.5pt ROMAN folio inside the default bands.
+    Under the default two-column geometry each chapter's two lines straddle the full-width
+    threshold (one wider than 0.55·W, the other narrower, same x0); under the
+    `single_column` geometry every candidate is `full`.
+      p1  chapter 1 (a narrow line over a wide one); section 'Full and Empty Patterns'
+      p2  body; section 'Hot and Cold Patterns'
+      p3  chapter 2 (a wide line over a narrow one); body"""
+    b = FakeBook()
+    sw, sh, x, lead = 612.0, 792.0, 72, 24
+
+    def page(folio: str) -> None:
+        b.cur = b.doc.new_page(width=sw, height=sh)
+        b.text(40, "The Single Column Reader", size=14, x=x, font="hebo")
+        b.text(778, folio, size=12.5, x=300, font="hebo")
+
+    def body(y: float, n: int) -> float:
+        for i in range(n):
+            b.text(y + LINE * i, f"single column body prose line {i} that runs the full measure", size=10, x=x)
+        return y + LINE * n
+
+    def chapter(y: float, first: str, second: str) -> float:
+        b.text(y, first, size=20, x=x, font="hebo")
+        return b.text(y + lead, second, size=20, x=x, font="hebo") + 16
+
+    def section(y: float, s: str) -> float:
+        return b.text(y, s, size=13, x=x, font="hebo") + 6
+
+    page("i"); y = chapter(110, "Identification of Patterns", "according to the Eight Guiding Principles")
+    y = body(y, 20); y = section(y + 12, "Full and Empty Patterns"); body(y, 22)
+    page("ii"); y = body(90, 25); y = section(y + 12, "Hot and Cold Patterns"); body(y, 25)
+    page("iii"); y = chapter(110, "Diagnosis by Observation of the Tongue", "and the Pulse"); body(y, 40)
+    b.save(path)
+    return {
+        "pdf": str(path),
+        "chapters": [
+            {"name": "Identification of Patterns according to the Eight Guiding Principles", "page": 1},
+            {"name": "Diagnosis by Observation of the Tongue and the Pulse", "page": 3},
+        ],
+        "sections": [
+            {"name": "Full and Empty Patterns", "page": 1},
+            {"name": "Hot and Cold Patterns", "page": 2},
+        ],
+    }

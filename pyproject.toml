@@ -1,6 +1,6 @@
 [project]
 name = "monograph-splitter"
-version = "0.3.1"
+version = "0.4.2"
 description = "Per-entry PDF excerpts from a scanned reference book: finds where each monograph starts and ends on a two-column page and cuts there, with real redaction of the neighbours' share of a shared page."
 readme = "README.md"
 requires-python = ">=3.11"

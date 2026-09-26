@@ -263,7 +263,13 @@ def create_app(config: dict) -> FastAPI:
 
     @app.get("/api/books/{book_id}/excerpts/{name}.pdf")
     def excerpt_pdf(book_id: str, name: str) -> FileResponse:
-        path = cfg_of(book_id).book.excerpt_path(name)
+        # Opening the book raises ValueError too (a malformed overrides.json, a bad profile); those
+        # must keep surfacing, so only the name guard sits inside the 404 mapping.
+        book = cfg_of(book_id).book
+        try:
+            path = book.excerpt_path(name)
+        except ValueError:
+            raise HTTPException(404, "no such excerpt")
         if not path.exists():
             raise HTTPException(404, "no excerpt yet")
         return FileResponse(path, media_type="application/pdf", filename=path.name,

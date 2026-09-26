@@ -5,7 +5,8 @@ Where the entry list comes from. The engine only ever sees
 set of "known" printed start pages (a TOC, an index) used to seed a synthetic
 top-of-page anchor where the OCR found no header at all.
 
-`--entries <json>` is the generic input: `[{"name": "Gui Zhi Tang", "page": 51}]`.
+`--entries <json>` is the generic input: `[{"name": "Gui Zhi Tang", "page": 51}]`
+(`entries_from_rows()` takes the same rows already in memory).
 In headings mode (profile `[anchors] source = "headings"`) a row also carries the
 `"heading"` text the engine locates on that page, and a row with `"stop": true`
 is a boundary only (a chapter tail, a section banner): it plants an anchor so
@@ -46,13 +47,18 @@ def _page_ok(v) -> bool:
 
 
 def load_entries_json(path: Path) -> EntryList:
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(raw, list):
-        raise ValueError(f"{path}: expected a JSON list of {{name, page}} objects")
+    return entries_from_rows(json.loads(Path(path).read_text(encoding="utf-8")), where=str(path))
+
+
+def entries_from_rows(rows: list, where: str = "entries") -> EntryList:
+    """The `--entries` rows, already parsed — the web worker hands its section list
+    straight in. A row with no name or no usable page is skipped (and reported), never fatal."""
+    if not isinstance(rows, list):
+        raise ValueError(f"{where}: expected a JSON list of {{name, page}} objects")
     entries: list[Entry] = []
     skipped: list[str] = []
     headings: list[tuple[str, str, int]] = []
-    for i, item in enumerate(raw):
+    for i, item in enumerate(rows):
         name = item.get("name") if isinstance(item, dict) else None
         page = item.get("page") if isinstance(item, dict) else None
         if not isinstance(name, str) or not name.strip():

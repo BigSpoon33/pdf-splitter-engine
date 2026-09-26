@@ -179,13 +179,19 @@ def apply_overrides(p: dict, ov: dict | None, prof: Profile) -> dict:
     return p
 
 
-def cut_rects(p: dict, w: float, h: float, prof: Profile) -> list[tuple[int, tuple[float, float, float, float]]]:
+def cut_rects(p: dict, w: float, h: float, prof: Profile,
+              last_size: tuple[float, float] | None = None) -> list[tuple[int, tuple[float, float, float, float]]]:
     """The regions removed on the first / last sheet: [(sheet_index_in_excerpt, (x0, y0, x1, y1))].
 
     An entry title is full-width, so its cut is a horizontal line. A sub-entry
     sits inside a column, and the page reads left column → right column *within
     a band* (the stretch between two full-width titles), then the next band.
-    "Before our start" / "after the next start" is taken in that order."""
+    "Before our start" / "after the next start" is taken in that order.
+
+    `w, h` is the first sheet's size, where the start cut lands. The end cut lands on
+    the last sheet, and a book whose pages differ gives that sheet's own size as
+    `last_size`, so its gutter (`column_split × W`) and footer edge (`H − footer_band`)
+    are its own; left out, the last sheet is taken to be the first sheet's size."""
     rects: list[tuple[int, tuple[float, float, float, float]]] = []
     last = p["sheet1"] - p["sheet0"]
     bottom = h - prof.footer_band
@@ -208,6 +214,10 @@ def cut_rects(p: dict, w: float, h: float, prof: Profile) -> list[tuple[int, tup
                 rects.append((0, (0, top, split, bb if bb is not None else bottom)))
                 rects.append((0, (split, top, w, y)))
     if p["endCut"] is not None:
+        if last_size is not None:
+            w, h = last_size
+            bottom = h - prof.footer_band
+            split = prof.column_split * w
         y, col = p["endCut"], p.get("endCol", "full")
         bt, bb = (p.get("endBand") or [None, None])
         band_bottom = bb if bb is not None else bottom

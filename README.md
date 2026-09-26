@@ -168,3 +168,95 @@ entry's heading still readable inside the excerpt is a `leak`.
 Bundled profile: `maciocia-foundations` (sheet offset 29, two columns split at 0.45,
 header band 46 / redaction from 52 so the running part number survives, footer band 36).
 
+
+## Web mode (library use, no files per job)
+
+The pdf-splitter web service drives the engine with a settings dict and an in-memory
+section list:
+
+```python
+from monograph_splitter.profile import profile_from_dict
+from monograph_splitter.session import Book
+
+prof = profile_from_dict({"column_split": 0.5, "heading_min_size": 13, "single_column": False})
+book = Book.open(pdf=pdf, out=job_dir, profile=prof,
+                 entries=[{"name": "Chapter 1", "page": 3, "heading": "Introduction"}])
+```
+
+- `profile_from_dict(d, base=WEB_BASE)` accepts only `WEB_KEYS` (`column_split`,
+  `header_band`, `footer_band`, `redact_top`, `heading_min_size`, `heading_match`,
+  `heading_wrap_gap`, `max_span`, `single_column`); any other key, a wrong type or an
+  out-of-range value is a `ProfileError` naming it. `WEB_BASE` is headings mode, no
+  script-title or summary-page rules, `max_span = 200`, and a page is the **1-based sheet
+  number** (PDF page 1 = the first sheet, i.e. engine `sheet_offset = 0`). The user's
+  section list is the only authority on where a section starts: no bare "Chapter N" line
+  breaks one (`chapter_only = ""` disables that rule), and `long_span = max_span`, so a
+  long section is not flagged `long-span` (setting `max_span` moves both).
+- `single_column: true` sets `column_split = 0.999` and `full_width_ratio = 0.0`: every
+  line is in the left column and every heading full-width, so every cut spans the page.
+- `sha256` is the hash of the effective values, so the index cache (and any
+  settings-keyed cache) changes with the settings and not with key order.
+- `Book.open(entries=...)` takes a JSON path, the rows themselves, or an `EntryList`;
+  rows go through `entries.entries_from_rows`, the same validation `--entries` uses.
+
+### Cutting every section (`Book.cut_all`)
+
+```python
+summary = book.cut_all(progress=lambda done, total, name: ..., verify=True, preview=False,
+                       only=None, limit=None, redact=True)
+# → {written: [manifest row], flags: {flag: n}, notes: {note: n},
+#    leaks: {name: [str]}, missing: [str], unknown: [str]}
+```
+
+The CLI is this call plus its log lines. It cuts the entries (or the names in `only`,
+then the first `limit`), saves `manifest.json` (merged with earlier runs, like `--only`)
+and, when previewing, `review/index.html`. `progress(done, total, name)` fires after each
+entry, including one whose plan falls off the book (it lands in `missing`). `leaks` holds
+the rows flagged `leak` by verification. `unknown` lists names in `only` that have no entry.
+
+An entry's name is its file name (`<name>.pdf`, the manifest's `file`). A name containing
+`/`, `\`, a NUL, or equal to `.` / `..` is refused with a `ValueError` naming it, before
+anything is written. `cut_all` doesn't make names unique: two entries with one name share a
+file, a manifest row and an override. The web job layer passes unique, file-safe names and
+keeps the display names itself.
+
+### Proposing sections (`detect`)
+
+Without an entry list, `monograph_splitter.detect` proposes one. Both sources return rows
+that `Book.open(entries=…)` takes unchanged (`page` = 1-based sheet, `heading` = the text
+to locate), and neither writes anything or reads a page's text more than once:
+
+```python
+import fitz
+from monograph_splitter import detect
+
+doc = fitz.open(pdf)
+detect.outline_levels(doc)          # [{level, count}] per outline depth; no outline → []
+detect.outline_entries(doc, 1)      # [{name, page, heading, level, y?}]
+detect.heading_candidates(doc, min_ratio=1.3, max_len=90, profile=prof)
+# or explicit geometry, which wins over the profile's:
+#   header_band=50, footer_band=32, wrap_gap=16, column_split=0.487, full_width_ratio=0.55
+# → {body_size, levels: [{size, count}], candidates: [{name, page, heading, size, level, y, col}]}
+```
+
+- **Outline:** items at exactly `level` that land on a sheet (a broken or external link,
+  page -1, is dropped). `heading` is the title without its leading number (`1.2 Scope` →
+  `Scope`). `y` (page coordinates, y down) is present only when the destination names a
+  point (`/XYZ` with a top, `/FitH`, `/FitBH`, `/FitR`, or a named destination that
+  resolves to one; an indirect destination, `/D 16 0 R`, is followed to its array);
+  `/Fit` and `/XYZ null null` have none.
+- **Big headings:** the body size is the char-weighted modal type size; a candidate is a
+  line (or up to three wrapped lines, tops within `wrap_gap`, starting on the same side of
+  `column_split` — a line that crosses the gutter still joins the narrower line under it)
+  at ≥ `body × min_ratio`, outside the header/footer bands, ≤ `max_len` characters joined.
+  The bands are the only page edge: whatever sits inside them (folios, running headers,
+  `xiv`) is out, and nothing outside them is second-guessed by its position, so a page-opening
+  "C", "Mix" or "Lesson 3" survives. A line repeated verbatim at one size on ≥ 30% of pages
+  (a running header, even with bands of 0) and digit folios (`12`, `- 12 -`, `Page 3`,
+  anywhere) never count. Sizes within 0.5 pt share a `level` (largest = 1); `col` is
+  `left`/`right`/`full` by the column geometry passed in.
+- **One profile for both calls:** `profile=prof` supplies the bands, `column_split`,
+  `full_width_ratio` and `wrap_gap` (the profile's `heading_wrap_gap`). Pass the job's
+  profile to `heading_candidates` and to `Book.open`, so detection wraps and classifies a
+  heading the same way `locate_heading` finds it. With neither a profile nor keywords, the
+  `Profile` defaults apply.
