@@ -107,3 +107,19 @@ def test_review_pngs_are_drawn_in_each_sheets_size(mixed):
     first, last = fitz.open(rv / "mixed-first.png"), fitz.open(rv / "mixed-last.png")
     assert (first[0].rect.width, first[0].rect.height) == (round(W), round(H))
     assert (last[0].rect.width, last[0].rect.height) == (W2, H2)
+    first.close(); last.close()
+
+    # WHERE the hatch lands on the wide sheet (72 dpi: one pixel per point) — the size alone
+    # is set by the page itself, so sheet-0 geometry would still pass the check above
+    pm = fitz.Pixmap(rv / "mixed-last.png")
+    reds = lambda y: [x for x in range(pm.width) if (lambda c: c[0] - c[1] > 25)(pm.pixel(x, y))]
+    wide_split, bottom = prof.column_split * W2, H2 - prof.footer_band
+    for y in range(int(p["endCut"]) + 2, int(bottom) - 2, 25):
+        row = reds(y)
+        assert (row[0], row[-1], len(row)) == (int(wide_split), int(W2) - 1, int(W2) - int(wide_split)), y
+    tail = [ln for ln in content_lines(book.doc[1], prof) if ln[4].startswith("alpha tail")]
+    assert tail and all(not any(int(ln[2]) <= x < int(ln[3]) for x in reds(y))
+                        for ln in tail for y in range(int(ln[0]) + 1, int(ln[0]) + 8))
+    # the end-cut label sits right-aligned in THIS sheet's width, just above the cut
+    label = [x for y in range(int(p["endCut"]) - 10, int(p["endCut"]) - 1) for x in reds(y)]
+    assert label and min(label) >= W2 - 70
