@@ -20,8 +20,10 @@ def write_excerpt(book, p: dict, dest: Path, redact: bool, prof: Profile) -> Non
     out = fitz.open()
     out.insert_pdf(book, from_page=p["sheet0"], to_page=p["sheet1"])
     if redact:
-        pg0 = out[0]
-        for i, r in cut_rects(p, pg0.rect.width, pg0.rect.height, prof):
+        # the excerpt's sheets are the book's own, so each keeps its size — the end cut is
+        # placed in the last sheet's geometry, not the first's
+        pg0, pgn = out[0], out[-1]
+        for i, r in cut_rects(p, pg0.rect.width, pg0.rect.height, prof, last_size=(pgn.rect.width, pgn.rect.height)):
             out[i].add_redact_annot(fitz.Rect(*r), fill=(1, 1, 1))
         for pg in out:
             if pg.first_annot:
@@ -38,12 +40,12 @@ def render_review(book, p: dict, slug: str, review_dir: Path, prof: Profile, dpi
     last = p["sheet1"] - p["sheet0"]
     doc = fitz.open()
     doc.insert_pdf(book, from_page=p["sheet0"], to_page=p["sheet1"])
-    w, h = doc[0].rect.width, doc[0].rect.height
-    rects = cut_rects(p, w, h, prof)
+    rects = cut_rects(p, doc[0].rect.width, doc[0].rect.height, prof, last_size=(doc[last].rect.width, doc[last].rect.height))
     for which, i in (("first", 0), ("last", last)):
         if which == "last" and last == 0:
             continue
         pg = doc[i]
+        w, h = pg.rect.width, pg.rect.height     # the ruler and the cut label sit on this sheet
         sh = pg.new_shape()
         for y in range(50, int(h), 50):
             sh.draw_line((0, y), (14, y))

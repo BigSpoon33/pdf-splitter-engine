@@ -192,6 +192,42 @@ def heading_book(path) -> dict:
     }
 
 
+W2, H2 = 700.0, 600.0
+RIGHT2 = 380      # the right column of the wider sheet: past ITS gutter (0.487 × 700 ≈ 341), not the narrow sheet's
+
+
+def mixed_size_book(path) -> dict:
+    """A headings-mode book whose sheets differ in size (printed page = sheet + 1 under
+    tests/profile-headings.toml):
+      p1  522.72 × 789.6 — Alpha Pattern at the top of the left column; body in both columns
+      p2  700 × 600     — left: Alpha's tail in lines long enough to cross the NARROW sheet's
+                          gutter (≈ 255 pt) but not this sheet's (≈ 341 pt); right (x = 380):
+                          Beta Pattern at the top of the column, then Beta's body running past
+                          the narrow sheet's right edge (522.72)
+    So Alpha's end cut is a right-column cut on the wide sheet: computed in the narrow sheet's
+    geometry it would clip Alpha's own tail and leave Beta's overflow; in the wide sheet's it
+    removes exactly Beta's column."""
+    b = FakeBook()
+    b.page(1); y = b.pattern(60, "Alpha Pattern"); b.body(y, 20, prefix="alpha body"); b.body(80, 20, "right", prefix="alpha right")
+    b.cur = b.doc.new_page(width=W2, height=H2)
+    b.text(35, "Chapter 1 - Test Formulas", size=9, x=54)
+    b.text(590, "2", size=8, x=54)                                     # the folio, inside the wide sheet's footer band
+    for i in range(12):
+        b.text(80 + LINE * i, f"alpha tail {i} of the running prose that reaches across the narrow gutter", x=LEFT)
+    b.text(80, "Beta Pattern", size=12.5, x=RIGHT2, font="hebo")
+    b.text(100, "Clinical manifestations", size=12, x=RIGHT2, font="hebo")
+    for i in range(20):
+        b.text(116 + LINE * i, f"beta body {i} of the running prose past the narrow edge", x=RIGHT2)
+    b.save(path)
+    return {
+        "pdf": str(path),
+        "entries": [
+            {"name": "Alpha Pattern", "page": 1, "heading": "Alpha Pattern"},
+            {"name": "Beta Pattern", "page": 2, "heading": "Beta Pattern"},
+        ],
+    }
+
+
 def headed_book(path, outline: bool = True) -> dict:
     """A generic two-column book for detection (web mode: page = 1-based sheet): body 9.5pt,
     chapters 16pt bold, sections 12pt bold, a 14pt running header on every page (inside the

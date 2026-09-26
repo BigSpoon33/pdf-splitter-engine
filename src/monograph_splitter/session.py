@@ -165,9 +165,11 @@ class Book:
 
     def rects(self, p: dict) -> list[dict]:
         """The redaction rectangles of a plan, as the review UI draws them:
-        `{sheet: <index within the excerpt>, rect: [x0, y0, x1, y1]}` in PDF points."""
+        `{sheet: <index within the excerpt>, rect: [x0, y0, x1, y1]}` in PDF points, each
+        sheet's rectangles in that sheet's own size (the index carries every sheet's W/H)."""
         w, h = self.page_size(p["sheet0"])
-        return [{"sheet": i, "rect": [round(v, 1) for v in r]} for i, r in cut_rects(p, w, h, self.prof)]
+        rects = cut_rects(p, w, h, self.prof, last_size=self.page_size(p["sheet1"]))
+        return [{"sheet": i, "rect": [round(v, 1) for v in r]} for i, r in rects]
 
     def anchors_on(self, sheet: int) -> list[dict]:
         """The headers the index knows on a sheet — where other entries start."""
